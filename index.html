@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Grid S/Hero — Renewables Manager · ATA Insights</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  html,body,#root{height:100%;margin:0;background:#0b1026;}
+  *{ -webkit-tap-highlight-color: transparent; }
+  body{ font-family: 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif; overflow-x:hidden; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes drift { from { transform: translateX(-160px); } to { transform: translateX(1160px); } }
+  @keyframes floatUp { 0%{ transform: translateY(0) scale(.7); opacity:0; } 15%{ opacity:1; transform:translateY(-6px) scale(1.1);} 100%{ transform: translateY(-78px) scale(1); opacity:0; } }
+  @keyframes flick { 0%,100%{opacity:1;} 20%{opacity:.12;} 40%{opacity:.9;} 55%{opacity:.08;} 75%{opacity:.7;} 90%{opacity:.2;} }
+  @keyframes pop { 0%{transform:scale(.6);opacity:0;} 60%{transform:scale(1.12);} 100%{transform:scale(1);opacity:1;} }
+  @keyframes sunGlow { 0%,100%{ filter: drop-shadow(0 0 5px rgba(255,210,60,.6)); } 50%{ filter: drop-shadow(0 0 18px rgba(255,210,60,.95)); } }
+  @keyframes flap { 0%,100%{ transform: scaleY(1); } 50%{ transform: scaleY(0.35); } }
+  @keyframes alertPulse { 0%,100%{ transform:translateX(-50%) scale(1);} 50%{ transform:translateX(-50%) scale(1.05);} }
+
+  .floater{ position:absolute; font-weight:900; pointer-events:none; animation: floatUp 1.4s ease-out forwards; text-shadow:0 2px 0 rgba(0,0,0,.4); }
+  .blades{ transform-box: fill-box; transform-origin: center; }
+  .flick{ animation: flick .25s steps(2,end) infinite; }
+  .popIn{ animation: pop .4s cubic-bezier(.2,1.3,.4,1) both; }
+  .alertP{ animation: alertPulse 1s ease-in-out infinite; }
+  .bird-wing{ transform-box: fill-box; transform-origin: center; animation: flap .35s ease-in-out infinite; }
+  .pixelshadow{ text-shadow: 2px 2px 0 rgba(0,0,0,.35); }
+  .nodrag{ user-select:none; }
+  .seg{ transition: all .12s ease; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useCallback } = React;
+const ATA_LOGO="data:image/png;base64,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";
+
+/* ============================== helpers ============================== */
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const rand=()=>Math.random();
+const fmt=(n)=>Math.round(n).toLocaleString('en-US');
+const pad2=(n)=>String(Math.floor(n)).padStart(2,'0');
+const clock=(h)=>`${pad2(h%24)}:${pad2((h%1)*60)}`;
+
+function interp(pts,x){
+  if(x<=pts[0][0])return pts[0][1];
+  const n=pts.length; if(x>=pts[n-1][0])return pts[n-1][1];
+  for(let i=0;i<n-1;i++){const [x0,y0]=pts[i],[x1,y1]=pts[i+1];
+    if(x>=x0&&x<=x1){const t=(x-x0)/(x1-x0);return y0+(y1-y0)*t;}}
+  return pts[n-1][1];
+}
+function hexToRgb(h){h=h.replace('#','');return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];}
+function lerpColor(a,b,t){const A=hexToRgb(a),B=hexToRgb(b);return `rgb(${Math.round(A[0]+(B[0]-A[0])*t)},${Math.round(A[1]+(B[1]-A[1])*t)},${Math.round(A[2]+(B[2]-A[2])*t)})`;}
+
+/* sky gradient over the day */
+const SKY=[[0,'#0b1026','#1a2a4a'],[5,'#243b6b','#7d5a78'],[6.5,'#5e86c9','#f0b27a'],[8,'#6db3f2','#cfe8ff'],
+[11,'#4a90d9','#bfe3ff'],[14,'#3d83d4','#bfe3ff'],[16.5,'#4f93d9','#ffe1b0'],[18.5,'#e07b3e','#ffcf8a'],
+[20,'#9c4a6b','#e0a07a'],[21.5,'#2a2350','#553a66'],[23,'#101936','#22335c'],[24,'#0b1026','#1a2a4a']];
+function skyColors(hour){let i=0;for(;i<SKY.length-1;i++){if(hour>=SKY[i][0]&&hour<=SKY[i+1][0])break;}
+  i=clamp(i,0,SKY.length-2);const t=(hour-SKY[i][0])/(SKY[i+1][0]-SKY[i][0]);
+  return [lerpColor(SKY[i][1],SKY[i+1][1],t),lerpColor(SKY[i][2],SKY[i+1][2],t)];}
+
+/* demand shapes (fraction 0..1 of base..peak) */
+const SHAPES={
+  evening:[[0,0.05],[6,0.10],[8,0.45],[12,0.35],[17,0.62],[19,1.0],[21,0.95],[22,0.42],[24,0.08]],
+  midday:[[0,0.05],[7,0.16],[11,0.7],[13,1.0],[16,0.9],[18,0.5],[20,0.4],[22,0.2],[24,0.05]],
+  winter:[[0,0.32],[6,0.55],[8,1.0],[11,0.7],[16,0.82],[19,1.0],[22,0.6],[24,0.35]],
+};
+function demandOut(hour,base,peak,shape){return base+(peak-base)*interp(SHAPES[shape],hour);}
+function solarOut(hour,mult,cap,sr,ss){if(hour<sr||hour>ss)return 0;return cap*Math.sin(Math.PI*(hour-sr)/(ss-sr))*mult;}
+function priceAt(hour,night,dip,eve){
+  const pts=[[0,night],[4,night*0.8],[7,night*1.2],[10,(dip+night)/2],[12,dip],[14,dip],
+    [16,(dip+eve)/2],[18,eve*0.82],[19,eve],[20,eve*0.96],[21,eve*0.72],[22,night*1.4],[24,night]];
+  return interp(pts,hour);
+}
+
+/* ============================ city profiles ========================= */
+const CITIES=[
+  { id:1, name:'Sevilla', region:'Andalusia, Spain', accent:'#ffce3a', factor:0.48,
+    solarCap:1830, windMax:730, batCap:3000, batRate:700, demBase:60, demPeak:150, shape:'evening',
+    night:42, dip:28, eve:120, cloudFreq:0.20, cloudDark:0.5, windGust:1.0, birdFreq:0, dayLen:165,
+    sunrise:6, sunset:20, hue:'#7ed957',
+    lesson:'Sunshine for days. Let the midday surplus sell itself, bank a little in the battery, and cash out into the evening price peak.',
+    special:'A gentle starter grid — no birds, light clouds.' },
+  { id:2, name:'Tarifa', region:'Strait of Gibraltar, Spain', accent:'#3fd0d6', factor:0.55,
+    solarCap:780, windMax:1960, batCap:3500, batRate:800, demBase:70, demPeak:165, shape:'evening',
+    night:44, dip:30, eve:140, cloudFreq:0.38, cloudDark:0.7, windGust:1.7, birdFreq:1.0, dayLen:158,
+    sunrise:6.5, sunset:19.5, hue:'#6fcf8f',
+    lesson:'The windiest town in Europe — and a major bird-migration crossing. STOP the turbines when flocks pass (you lose income briefly), then ride the gusts.',
+    special:'🦅 Birds! Stop the turbines when they fly in. Gusty, cloudy.' },
+  { id:3, name:'Tokyo', region:'Japan', accent:'#ff6ad5', factor:0.62,
+    solarCap:1710, windMax:1480, batCap:4000, batRate:1000, demBase:120, demPeak:300, shape:'evening',
+    night:56, dip:36, eve:185, cloudFreq:0.40, cloudDark:0.7, windGust:1.3, birdFreq:0.3, dayLen:150,
+    sunrise:6.5, sunset:19.5, hue:'#5d9ce8',
+    lesson:'Demand explodes after dark. Hoard the battery all day, then SELL hard into the 7–9pm price peak.',
+    special:'💡 Brutal evening demand & high prices. A few birds.' },
+  { id:4, name:'Ouarzazate', region:'Sahara, Morocco', accent:'#ff9d3a', factor:0.68,
+    solarCap:4000, windMax:560, batCap:3000, batRate:800, demBase:80, demPeak:240, shape:'midday',
+    night:34, dip:22, eve:150, cloudFreq:0.24, cloudDark:0.6, windGust:0.8, birdFreq:0.2, dayLen:150,
+    sunrise:6, sunset:20, hue:'#e0b15c',
+    lesson:'Home of the Noor mega-solar farm: sun is everything, the wind barely blows. Bank the morning glut to survive the midday A/C spike and the long desert night.',
+    special:'🌵 Sahara mega-solar (think Noor). Almost no wind; demand peaks at midday.' },
+  { id:5, name:'Mumbai', region:'Maharashtra, India', accent:'#5be58a', factor:0.74,
+    solarCap:3550, windMax:1970, batCap:4500, batRate:1000, demBase:85, demPeak:210, shape:'evening',
+    night:46, dip:30, eve:150, cloudFreq:0.66, cloudDark:0.92, windGust:1.6, birdFreq:1.2, dayLen:146,
+    sunrise:6, sunset:19, hue:'#52b06a',
+    lesson:'Dark clouds smother the panels without warning and birds love this coast. React fast — SELL when PV drops, stop the turbines for flocks.',
+    special:'⛈️ Heavy clouds + lots of birds. Stay on your toes.' },
+  { id:6, name:'Tromsø', region:'Arctic Norway', accent:'#8fd6ff', factor:0.82,
+    solarCap:1800, windMax:3280, batCap:4500, batRate:1100, demBase:150, demPeak:330, shape:'winter',
+    night:62, dip:42, eve:205, cloudFreq:0.6, cloudDark:0.85, windGust:2.0, birdFreq:0.8, dayLen:142,
+    sunrise:9, sunset:16, hue:'#9fb8c9',
+    lesson:'Brutal cold, a tiny sun window and screaming wind. Lean on wind + battery and survive the morning & evening heating peaks.',
+    special:'❄️ Short solar day, fierce wind, double demand peak. Everything at once.' },
+];
+function estimateTarget(c){
+  let rev=0;
+  const avgCloud=1-c.cloudFreq*c.cloudDark*0.35;
+  const avgWind=0.46*c.windMax*(c.birdFreq>0?0.9:1);
+  for(let h=0;h<24;h+=0.2){
+    const gen=solarOut(h,avgCloud,c.solarCap,c.sunrise,c.sunset)+avgWind;
+    const d=demandOut(h,c.demBase,c.demPeak,c.shape);
+    const surplus=Math.max(0,gen-d);
+    rev+=surplus/1000*priceAt(h,c.night,c.dip,c.eve)*0.2;
+  }
+  return Math.max(150, Math.round(rev*c.factor/10)*10);
+}
+CITIES.forEach(c=>c.target=estimateTarget(c));
+
+const DEG=8; // €/MWh battery degradation penalty
+const STRIKE_FINE=140; // € per bird-strike incident
+
+function initGame(c){
+  return {
+    hour:0, soc:c.batCap*0.35, money:0, degCost:0, strikeCost:0,
+    windCurrent:0.55*c.windMax, windTarget:0.55*c.windMax, windTimer:9,
+    cloudCover:0, cloudTarget:0, cloudTimer:0, priceNoise:0,
+    undersupplyTimer:0, wasUnder:false, nearMisses:0,
+    // controls
+    turbines:true, batMode:'hold',  // charge | hold | sell
+    // bird event
+    birdState:'none', birdTimer:0, birdSpawn: c.birdFreq>0 ? (10+rand()*6) : 1e9,
+    birdX:-12, struck:false, strikes:0,
+    // display
+    solar:0, wind:0, demand:demandOut(0,c.demBase,c.demPeak,c.shape), price:c.night,
+    gen:0, exportKw:0, toBat:0, fromBat:0, toBldg:0, status:'green', revRate:0, flicker:false, peakMoney:0,
+  };
+}
+
+/* ================================ APP =============================== */
+function App(){
+  const [screen,setScreen]=useState('tutorial'); // tutorial|select|intro|playing|results|gameover
+  const [cityIdx,setCityIdx]=useState(0);
+  const [unlocked,setUnlocked]=useState(1);
+  const [g,setG]=useState(()=>initGame(CITIES[0]));
+  const [floaters,setFloaters]=useState([]);
+  const [bigAlert,setBigAlert]=useState(null);
+  const cityRef=useRef(CITIES[0]); cityRef.current=CITIES[cityIdx];
+  const fAcc=useRef(0); const fTick=useRef(0); const fid=useRef(0);
+  const result=useRef(null);
+
+  const enterCity=useCallback((idx)=>{ setCityIdx(idx); cityRef.current=CITIES[idx];
+    setG(initGame(CITIES[idx])); setFloaters([]); setBigAlert(null); setScreen('intro'); },[]);
+
+  useEffect(()=>{
+    if(screen!=='playing') return;
+    const id=setInterval(()=>{
+      setG(prev=>{
+        const c=cityRef.current; const ng={...prev};
+        const dt=24*(0.1/c.dayLen);
+
+        // wind regime + random walk
+        ng.windTimer-=0.1;
+        if(ng.windTimer<=0){ ng.windTimer=5+rand()*10;
+          ng.windTarget = rand()<0.5 ? (0.05+rand()*0.23)*c.windMax : (0.55+rand()*0.45)*c.windMax; }
+        ng.windCurrent=clamp(prev.windCurrent+(ng.windTarget-prev.windCurrent)*0.05+(rand()-0.5)*0.08*c.windMax*c.windGust,0,c.windMax);
+
+        // clouds
+        ng.cloudTimer-=0.1;
+        if(ng.cloudTimer<=0){ ng.cloudTimer=3.5+rand()*6;
+          ng.cloudTarget = rand()<c.cloudFreq ? (0.4+rand()*0.6)*c.cloudDark : 0; }
+        ng.cloudCover=clamp(prev.cloudCover+(ng.cloudTarget-prev.cloudCover)*0.05,0,1);
+
+        ng.hour=prev.hour+dt;
+
+        // birds
+        let strikeNow=0;
+        if(c.birdFreq>0){
+          if(prev.birdState==='none'){
+            ng.birdSpawn=prev.birdSpawn-0.1;
+            if(ng.birdSpawn<=0){ ng.birdState='incoming'; ng.birdTimer=0; ng.birdX=-12; ng.struck=false; }
+          } else {
+            ng.birdTimer=prev.birdTimer+0.1;
+            if(prev.birdState==='incoming'){ ng.birdX=prev.birdX+1.3; if(ng.birdX>=58){ ng.birdState='danger'; ng.birdTimer=0; } }
+            else if(prev.birdState==='danger'){ ng.birdX=prev.birdX+0.45;
+              if(prev.turbines){ // turbines running while birds overhead → strike
+                strikeNow = STRIKE_FINE*dt*1.6;
+                if(!prev.struck){ ng.struck=true; ng.strikes=prev.strikes+1; }
+              }
+              if(ng.birdTimer>3.6){ ng.birdState='leaving'; } }
+            else if(prev.birdState==='leaving'){ ng.birdX=prev.birdX+1.6;
+              if(ng.birdX>112){ ng.birdState='none'; ng.birdSpawn=(16+rand()*20)/c.birdFreq; } }
+          }
+        }
+
+        const solar=solarOut(ng.hour,1-ng.cloudCover*0.7,c.solarCap,c.sunrise,c.sunset);
+        const wind=prev.turbines?ng.windCurrent:0;
+        const gen=solar+wind;
+        const demand=demandOut(ng.hour,c.demBase,c.demPeak,c.shape);
+        ng.priceNoise=prev.priceNoise*0.9+(rand()-0.5)*4;
+        const price=Math.max(6,priceAt(ng.hour,c.night,c.dip,c.eve)+ng.priceNoise);
+
+        // battery dispatch — keeping the lights on is AUTOMATIC; SELL just adds grid export
+        const deficit=Math.max(0,demand-gen);
+        const backupKw=Math.min(deficit,c.batRate,prev.soc/dt);   // auto-discharge to cover demand, any mode, only what's needed
+        let exportDischargeKw=0, drawForCharge=0;
+        if(prev.batMode==='sell'){ const totalDis=Math.min(c.batRate,prev.soc/dt); exportDischargeKw=Math.max(0,totalDis-backupKw); }
+        else if(prev.batMode==='charge'){ const surplusGen=Math.max(0,gen-demand); const head=(c.batCap-prev.soc)/0.9/dt; drawForCharge=Math.min(c.batRate,surplusGen,head); }
+        const discharge=backupKw+exportDischargeKw;
+        let soc=prev.soc - discharge*dt + drawForCharge*dt*0.9;
+        ng.soc=clamp(soc,0,c.batCap);
+
+        const supply=gen+discharge;
+        const served=Math.min(supply,demand);
+        const exportKw=Math.max(0,gen+discharge-demand-drawForCharge);
+        const revRate=exportKw/1000*price;
+        const degRate=exportDischargeKw/1000*DEG;  // wear only on battery energy you deliberately SELL, never on survival backup
+        const net=(revRate-degRate)*dt - strikeNow;
+        ng.money=prev.money+net;
+        ng.degCost=prev.degCost+degRate*dt;
+        ng.strikeCost=prev.strikeCost+strikeNow;
+        ng.peakMoney=Math.max(prev.peakMoney,ng.money);
+
+        // status / fail
+        let status; if(supply>=demand*1.1)status='green'; else if(supply>=demand-0.01)status='yellow'; else status='red';
+        const under=supply<demand-0.01;
+        if(under){ ng.undersupplyTimer=prev.undersupplyTimer+0.1; if(!prev.wasUnder)ng.nearMisses=prev.nearMisses+1; ng.wasUnder=true; }
+        else { ng.undersupplyTimer=0; ng.wasUnder=false; }
+        ng.flicker=under;
+
+        ng.solar=solar; ng.wind=wind; ng.gen=gen; ng.demand=demand; ng.price=price;
+        ng.exportKw=exportKw; ng.toBat=drawForCharge; ng.fromBat=discharge; ng.toBldg=served;
+        ng.status=status; ng.revRate=(revRate-degRate);
+
+        // floaters
+        fAcc.current+=net; fTick.current+=1;
+        if(fTick.current>=10){ const amt=fAcc.current; fAcc.current=0; fTick.current=0;
+          if(Math.abs(amt)>=1){ const myid=++fid.current;
+            setFloaters(f=>[...f.slice(-6),{id:myid,amt,x:40+rand()*10,neg:amt<0}]);
+            setTimeout(()=>setFloaters(f=>f.filter(x=>x.id!==myid)),1400);} }
+
+        if(ng.undersupplyTimer>2.0 && ng.hour>0.8){ result.current={...ng,dead:true,city:c}; setTimeout(()=>setScreen('gameover'),0); }
+        else if(ng.hour>=24){ ng.hour=24; result.current={...ng,dead:false,won:ng.money>=c.target,city:c}; setTimeout(()=>setScreen('results'),0); }
+        return ng;
+      });
+    },100);
+    return ()=>clearInterval(id);
+  },[screen]);
+
+  const city=CITIES[cityIdx];
+  const setCtrl=(patch)=>setG(prev=>({...prev,...patch}));
+
+  return (
+    <div className="h-[100dvh] w-full flex flex-col items-center text-white overflow-hidden">
+      <div className="w-full max-w-[1000px] h-full flex flex-col px-2 sm:px-3 pt-1 pb-2 overflow-hidden">
+        <Header city={city} g={g}/>
+        <div className="relative flex-1 min-h-0 my-1"><World g={g} city={city} floaters={floaters}/></div>
+        <Hud g={g} city={city}/>
+        <Controls g={g} city={city} setCtrl={setCtrl}/>
+      </div>
+
+      {screen==='tutorial' && <Tutorial onStart={()=>setScreen('select')}/>}
+      {screen==='select' && <CitySelect unlocked={unlocked} onPick={enterCity}/>}
+      {screen==='intro' && <CityIntro city={city} onGo={()=>setScreen('playing')} onBack={()=>setScreen('select')}/>}
+      {screen==='results' && <Results r={result.current}
+          onNext={()=>{ const ni=Math.min(cityIdx+1,CITIES.length-1); if(result.current.won)setUnlocked(u=>Math.max(u,ni+1)); enterCity(ni); }}
+          onRetry={()=>enterCity(cityIdx)} onMap={()=>{ if(result.current.won)setUnlocked(u=>Math.max(u,cityIdx+2)); setScreen('select'); }}
+          hasNext={cityIdx<CITIES.length-1}/>}
+      {screen==='gameover' && <GameOver r={result.current} onRetry={()=>enterCity(cityIdx)} onMap={()=>setScreen('select')}/>}
+    </div>
+  );
+}
+
+/* =============================== Header ============================= */
+function Header({city,g}){
+  const pct=clamp(g.money/city.target,0,1);
+  const dayPct=clamp(g.hour/24,0,1);
+  return (
+    <div className="shrink-0">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <img src={ATA_LOGO} alt="ATA Insights" className="h-7 sm:h-9 bg-white rounded-md p-1 shadow-md shrink-0"/>
+          <div className="min-w-0 leading-tight">
+            <div className="font-black text-sm sm:text-2xl tracking-tight pixelshadow leading-none" style={{color:'#ffd84a'}}>GRID&nbsp;S/HERO</div>
+            <div className="text-[10px] sm:text-xs font-bold truncate" style={{color:city.accent}}>📍 {city.name} <span className="text-white/45">· {city.region}</span></div>
+          </div>
+        </div>
+        <div className="text-right shrink-0">
+          <div className="text-[9px] sm:text-[11px] uppercase tracking-wider text-white/55 font-bold leading-none">Revenue / Target</div>
+          <div className="font-black text-sm sm:text-xl leading-tight" style={{color:g.money>=city.target?'#7CFC9B':'#fff'}}>
+            €{fmt(g.money)} <span className="text-white/45 text-xs sm:text-sm">/ €{fmt(city.target)}</span></div>
+        </div>
+      </div>
+      <div className="mt-1 h-2.5 rounded-full bg-black/40 overflow-hidden border border-white/10">
+        <div className="h-full rounded-full transition-all duration-200" style={{width:`${pct*100}%`,background:'linear-gradient(90deg,#3bd16f,#a6ff5e)'}}/>
+      </div>
+      <div className="mt-0.5 h-1 rounded-full bg-black/30 overflow-hidden">
+        <div className="h-full bg-amber-300/80" style={{width:`${dayPct*100}%`}}/>
+      </div>
+    </div>
+  );
+}
+
+/* ================================ World ============================= */
+function World({g,city,floaters}){
+  const [top,bottom]=skyColors(g.hour);
+  const day=g.hour>=city.sunrise && g.hour<=city.sunset;
+  const tt=clamp((g.hour-city.sunrise)/(city.sunset-city.sunrise),0,1);
+  const sunX=70+tt*620, sunY=330-Math.sin(Math.PI*tt)*270;
+  const nightT=g.hour>city.sunset?(g.hour-city.sunset)/(24-city.sunset+city.sunrise):(g.hour+ (24-city.sunset))/(24-city.sunset+city.sunrise);
+  const moonX=120+clamp(nightT,0,1)*620, moonY=300-Math.sin(Math.PI*clamp(nightT,0,1))*230;
+  const solarMult=day?(1-g.cloudCover*0.7)*Math.max(0.05,Math.sin(Math.PI*tt)):0;
+  const socFrac=clamp(g.soc/city.batCap,0,1);
+  const powered=g.toBldg>=g.demand-0.01;
+  const windNorm=clamp(g.windCurrent/city.windMax,0,1);
+  const spinDur=(2.8-windNorm*2.45).toFixed(2);
+  const starOp=clamp((g.hour<city.sunrise||g.hour>city.sunset+0.3)?0.85:0,0,1);
+  const turbStopped=!g.turbines;
+  const birdsVisible=g.birdState!=='none';
+  const danger=g.birdState==='danger' && g.turbines;
+
+  return (
+    <div className="relative w-full h-full rounded-2xl overflow-hidden border-2 border-black/30 shadow-xl nodrag" style={{background:`linear-gradient(180deg,${top},${bottom})`}}>
+      <svg viewBox="0 0 1000 560" preserveAspectRatio="xMidYMid meet" className="w-full h-full block">
+        <defs>
+          <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={top}/><stop offset="1" stopColor={bottom}/></linearGradient>
+          <radialGradient id="sunG"><stop offset="0" stopColor="#fff8c9"/><stop offset="0.5" stopColor="#ffd23f"/><stop offset="1" stopColor="#ff9d00"/></radialGradient>
+          <linearGradient id="hill1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={lerpColor(city.hue,'#ffffff',0.12)}/><stop offset="1" stopColor={lerpColor(city.hue,'#000000',0.25)}/></linearGradient>
+          <linearGradient id="hill2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={lerpColor(city.hue,'#ffffff',0.25)}/><stop offset="1" stopColor={city.hue}/></linearGradient>
+          <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={lerpColor(city.hue,'#ffffff',0.18)}/><stop offset="1" stopColor={lerpColor(city.hue,'#000000',0.35)}/></linearGradient>
+          <linearGradient id="batG" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stopColor={socFrac<0.2?'#ff5d5d':'#34d96b'}/><stop offset="1" stopColor={socFrac<0.2?'#ff9d5d':'#a6ff5e'}/></linearGradient>
+        </defs>
+
+        <rect x="0" y="0" width="1000" height="560" fill="url(#sky)"/>
+        {starOp>0.02 && [...Array(30)].map((_,i)=>(<circle key={i} cx={(i*149)%1000} cy={(i*61)%300} r={i%4===0?1.7:1} fill="#fff" opacity={starOp*(0.4+(i%5)/6)}/>))}
+
+        {day ? (
+          <g style={{animation:'sunGlow 4s ease-in-out infinite'}}><circle cx={sunX} cy={sunY} r="44" fill="url(#sunG)"/><circle cx={sunX} cy={sunY} r="60" fill="#ffe680" opacity="0.18"/></g>
+        ) : (
+          <g><circle cx={moonX} cy={moonY} r="30" fill="#eef1ff"/><circle cx={moonX+10} cy={moonY-6} r="26" fill={top} opacity="0.9"/></g>
+        )}
+
+        {/* clouds */}
+        {[0,1,2,3,4,5].map(i=>{
+          const op=clamp(g.cloudCover*1.4-i*0.11,0,0.96); if(op<=0.03)return null;
+          const dur=(24+i*8)+'s'; const y=36+i*30; const sc=0.9+i*0.16;
+          const dark=g.cloudCover>0.55?lerpColor('#ffffff','#7e879b',clamp((g.cloudCover-0.55)/0.45,0,1)):'#ffffff';
+          return (<g key={i} style={{animation:`drift ${dur} linear infinite`,animationDelay:`${-i*5}s`}} opacity={op}>
+            <g transform={`translate(0 ${y}) scale(${sc})`}>
+              <ellipse cx="0" cy="0" rx="50" ry="26" fill={dark}/><ellipse cx="42" cy="7" rx="40" ry="24" fill={dark}/>
+              <ellipse cx="-40" cy="9" rx="34" ry="22" fill={dark}/><ellipse cx="6" cy="-16" rx="32" ry="22" fill={dark}/></g></g>);
+        })}
+
+        {/* hills + ground */}
+        <path d="M0,430 Q170,350 360,415 T720,405 T1000,420 L1000,560 L0,560 Z" fill="url(#hill1)"/>
+        <path d="M0,470 Q230,405 480,460 T1000,455 L1000,560 L0,560 Z" fill="url(#hill2)"/>
+        <rect x="0" y="505" width="1000" height="55" fill="url(#ground)"/>
+
+        {/* SOLAR PARK (left) — 3x4 array */}
+        <g transform="translate(24 372)">
+          <text x="120" y="-12" textAnchor="middle" className="font-black" fontSize="15" fill="#fff" opacity="0.88" stroke="#0008" strokeWidth="3" style={{paintOrder:'stroke'}}>☀ SOLAR · {Math.round(g.solar)} kW</text>
+          {[0,1,2].map(row=>[0,1,2,3].map(col=>{
+            const px=col*60, py=row*36; const cellCol=lerpColor('#16324f','#ffe14d',clamp(solarMult,0,1));
+            return (<g key={row+'-'+col} transform={`translate(${px} ${py}) skewX(-14)`}>
+              <rect x="0" y="0" width="52" height="28" rx="3" fill={cellCol} stroke="#0b1f33" strokeWidth="2"/>
+              <line x1="17" y1="0" x2="17" y2="28" stroke="#0b1f33" strokeWidth="1.3" opacity="0.6"/>
+              <line x1="35" y1="0" x2="35" y2="28" stroke="#0b1f33" strokeWidth="1.3" opacity="0.6"/>
+              <line x1="0" y1="14" x2="52" y2="14" stroke="#0b1f33" strokeWidth="1.3" opacity="0.6"/>
+              {solarMult>0.55 && <rect x="3" y="2" width="14" height="5" fill="#fff" opacity={(solarMult-0.55)*1.4}/>}</g>);
+          }))}
+        </g>
+
+        {/* MINIGRID BUILDINGS (center) */}
+        <g transform="translate(312 392)" className={g.flicker?'flick':''}>
+          {[{x:0,w:62,h:118,rows:4,cols:2},{x:72,w:52,h:158,rows:5,cols:2},{x:134,w:70,h:100,rows:3,cols:3},
+            {x:214,w:48,h:134,rows:4,cols:2},{x:272,w:64,h:112,rows:3,cols:3}].map((b,bi)=>{
+            const col=lerpColor(city.accent,['#e85d75','#5d9ce8','#f2a93b','#7d6ef0','#46c79a'][bi],0.55);
+            return (<g key={bi} transform={`translate(${b.x} ${164-b.h})`}>
+              <rect x="0" y="0" width={b.w} height={b.h} rx="5" fill={col} stroke="#0008" strokeWidth="2"/>
+              <rect x="0" y="0" width={b.w} height="9" rx="4" fill="#0003"/>
+              {[...Array(b.rows)].map((_,r)=>[...Array(b.cols)].map((_,cc)=>{
+                const ww=12,gap=(b.w-b.cols*ww)/(b.cols+1),wx=gap+cc*(ww+gap),wy=16+r*((b.h-24)/b.rows);
+                return <rect key={r+'-'+cc} x={wx} y={wy} width={ww} height="11" rx="2" fill={powered?'#fff3a0':'#2a2f3a'} stroke="#0006" strokeWidth="1" style={powered?{filter:'drop-shadow(0 0 3px #ffe066)'}:{}}/>;
+              }))}</g>);
+          })}
+          <text x="170" y="182" textAnchor="middle" className="font-black" fontSize="14" fill="#fff" opacity="0.85" stroke="#0008" strokeWidth="3" style={{paintOrder:'stroke'}}>🏙 MINIGRID · {Math.round(g.demand)} kW</text>
+        </g>
+
+        {/* BATTERY PARK (center-right) */}
+        <g transform="translate(648 360)">
+          <text x="76" y="-14" textAnchor="middle" className="font-black" fontSize="14" fill="#fff" opacity="0.9" stroke="#0008" strokeWidth="3" style={{paintOrder:'stroke'}}>🔋 {Math.round(g.soc)} kWh</text>
+          <rect x="0" y="0" width="152" height="96" rx="11" fill="#23303a" stroke="#0c151c" strokeWidth="3"/>
+          <clipPath id="bclip"><rect x="9" y="9" width="134" height="78" rx="6"/></clipPath>
+          <g clipPath="url(#bclip)"><rect x="9" y={9+78*(1-socFrac)} width="134" height={78*socFrac} fill="url(#batG)"/>
+            {g.toBat>0.5 && <rect x="9" y="9" width="134" height="78" fill="#fff" opacity="0.12"/>}</g>
+          {[1,2,3].map(s=>(<line key={s} x1="9" y1={9+19.5*s} x2="143" y2={9+19.5*s} stroke="#0c151c" strokeWidth="1.5" opacity="0.35"/>))}
+          <text x="76" y="55" textAnchor="middle" className="font-black" fontSize="24" fill="#06231a" opacity="0.85">{Math.round(socFrac*100)}%</text>
+          <rect x="48" y="-8" width="16" height="8" rx="2" fill="#23303a"/><rect x="88" y="-8" width="16" height="8" rx="2" fill="#23303a"/>
+          {g.fromBat>0.5 && <text x="76" y="116" textAnchor="middle" fontSize="13" className="font-black" fill="#ffd84a">▼ selling {Math.round(g.fromBat)} kW</text>}
+          {g.toBat>0.5 && <text x="76" y="116" textAnchor="middle" fontSize="13" className="font-black" fill="#9be6ff">▲ charging {Math.round(g.toBat)} kW</text>}
+        </g>
+
+        {/* WIND PARK (right) — 4 turbines */}
+        <g transform="translate(812 232)">
+          <text x="96" y="-8" textAnchor="middle" className="font-black" fontSize="14" fill="#fff" opacity="0.88" stroke="#0008" strokeWidth="3" style={{paintOrder:'stroke'}}>🌬 WIND · {Math.round(g.wind)} kW</text>
+          {[0,1,2,3].map(i=>{const tx=i*52,ty=i%2===1?16:0,h=i%2===1?150:124;
+            return (<g key={i} transform={`translate(${tx} ${ty})`}>
+              <rect x="-5" y="0" width="10" height={h} rx="4" fill="#e8eef2" stroke="#9fb0bb" strokeWidth="1.5"/>
+              <g transform="translate(0 4)">
+                <g className="blades" style={turbStopped?{}:{animation:`spin ${spinDur}s linear infinite`}}>
+                  {[0,120,240].map(a=>(<g key={a} transform={`rotate(${a})`}>
+                    <path d="M0,0 L7,-4 L3,-44 L-3,-44 L-7,-4 Z" fill={danger?'#ff8a8a':(turbStopped?'#cdd6dc':'#f2f7fa')} stroke="#b9c6cf" strokeWidth="1"/></g>))}
+                </g>
+                <circle cx="0" cy="0" r="6" fill="#cfd9df" stroke="#8fa0aa" strokeWidth="1.5"/></g></g>);
+          })}
+          {turbStopped && <text x="96" y="172" textAnchor="middle" fontSize="13" className="font-black" fill="#ff9d6b">⏸ STOPPED</text>}
+        </g>
+
+        {/* GRID pylon */}
+        <g transform="translate(958 372)" opacity="0.9">
+          <path d="M12,0 L0,80 M12,0 L24,80 M2,54 L22,54 M4,36 L20,36 M-3,80 L27,80" stroke="#cdd6dc" strokeWidth="3" fill="none"/>
+          <path d="M12,0 L-5,-9 M12,0 L29,-9" stroke="#cdd6dc" strokeWidth="3"/></g>
+        {g.exportKw>1 && <line x1="724" y1="300" x2="958" y2="372" stroke="#ffe066" strokeWidth="2.5" strokeDasharray="6 8" opacity="0.7"/>}
+
+        {/* BIRDS */}
+        {birdsVisible && [0,1,2,3,4].map(i=>{
+          const bx=(g.birdX + (i-2)*5)*10 + (i%2)*6; const by=150 + Math.abs(i-2)*16 + Math.sin((g.birdTimer+i)*2)*4;
+          return (<g key={i} transform={`translate(${bx} ${by})`}>
+            <path className="bird-wing" d="M-13,0 Q-6,-9 0,0" fill="none" stroke={danger?'#ff5a5a':'#2c2f3a'} strokeWidth="3" strokeLinecap="round"/>
+            <path className="bird-wing" d="M0,0 Q6,-9 13,0" fill="none" stroke={danger?'#ff5a5a':'#2c2f3a'} strokeWidth="3" strokeLinecap="round"/></g>);
+        })}
+      </svg>
+
+      {/* alerts */}
+      {danger && (<div className="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs sm:text-sm font-black alertP"
+          style={{background:'#e02424',boxShadow:'0 4px 14px rgba(0,0,0,.5)'}}>🦅 BIRDS OVERHEAD — STOP THE TURBINES!</div>)}
+      {!danger && g.birdState==='incoming' && (<div className="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs sm:text-sm font-black"
+          style={{background:'#f59e0b'}}>🦅 Flock incoming…</div>)}
+      {g.status!=='green' && !danger && g.birdState!=='incoming' && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs sm:text-sm font-black popIn"
+          style={{background:g.status==='red'?'#e02424':'#f59e0b',boxShadow:'0 4px 12px rgba(0,0,0,.4)'}}>
+          {g.status==='red'?'⚠ BATTERY EMPTY — lights are failing! Recharge!':'⚡ Power margin tight!'}</div>)}
+
+      {floaters.map(f=>(<div key={f.id} className="floater text-base sm:text-2xl" style={{left:`${f.x}%`,top:'45%',color:f.neg?'#ff8a8a':'#b6ff7a'}}>{f.neg?'−':'+'}€{Math.abs(f.amt).toFixed(0)}</div>))}
+    </div>
+  );
+}
+
+/* ================================ HUD ============================== */
+function Stat({label,value,sub,color}){
+  return (<div className="bg-black/30 rounded-lg px-1.5 py-0.5 border border-white/10 text-center">
+    <div className="text-[9px] sm:text-[10px] uppercase tracking-wide text-white/55 font-bold leading-tight">{label}</div>
+    <div className="font-black leading-none text-sm sm:text-lg" style={{color:color||'#fff'}}>{value}</div>
+    {sub && <div className="text-[9px] text-white/45 font-semibold leading-tight">{sub}</div>}</div>);
+}
+function Hud({g,city}){
+  const sc=g.status==='green'?'#39d36b':g.status==='yellow'?'#f5b942':'#ff4d4d';
+  const pvCut=g.cloudCover>0.08?` −${Math.round(g.cloudCover*70)}%`:'';
+  return (
+    <div className="shrink-0 mt-1 grid grid-cols-4 sm:grid-cols-7 gap-1">
+      <Stat label="Clock" value={clock(g.hour)} color="#ffe27a"/>
+      <Stat label="Price" value={`€${g.price.toFixed(0)}`} sub="/MWh" color={g.price>=city.eve*0.8?'#ff7ad9':g.price<=city.dip*1.15?'#7ad9ff':'#fff'}/>
+      <Stat label="Solar" value={`${g.solar.toFixed(0)}`} sub={`kW${pvCut}`} color="#ffd23f"/>
+      <Stat label="Wind" value={`${g.wind.toFixed(0)}`} sub="kW" color="#9be6ff"/>
+      <Stat label="Battery" value={`${Math.round(g.soc/city.batCap*100)}%`} sub={`${Math.round(g.soc)} kWh`} color="#a6ff5e"/>
+      <Stat label="Demand" value={`${g.demand.toFixed(0)}`} sub="kW" color="#ffb3b3"/>
+      <div className="bg-black/30 rounded-lg px-1.5 py-0.5 border border-white/10 text-center flex flex-col items-center justify-center">
+        <div className="text-[9px] uppercase tracking-wide text-white/55 font-bold leading-tight">Quality</div>
+        <div className="w-3.5 h-3.5 rounded-full mt-0.5" style={{background:sc,boxShadow:`0 0 10px ${sc}`}}/></div>
+    </div>
+  );
+}
+
+/* ============================== Controls =========================== */
+function Controls({g,city,setCtrl}){
+  const hasBirds=city.birdFreq>0;
+  const modeBtn=(m,label,icon,col,desc)=>{
+    const on=g.batMode===m;
+    return (<button onClick={()=>setCtrl({batMode:m})}
+      className="seg flex-1 rounded-lg py-1 px-1 border-2 font-black active:scale-95"
+      style={{borderColor:on?col:'#39414f',background:on?col:'#1a1f2b',color:on?'#0c1220':'#aab2c0',
+              boxShadow:on?`0 3px 0 ${shade(col)}`:'none'}}>
+      <div className="text-base sm:text-lg leading-none">{icon}</div>
+      <div className="text-xs sm:text-sm leading-tight">{label}</div>
+      <div className="text-[9px] font-bold opacity-80 leading-tight">{desc}</div></button>);
+  };
+  return (
+    <div className="shrink-0 mt-1 space-y-1">
+      {/* battery 3-mode */}
+      <div>
+        <div className="text-[10px] uppercase tracking-wider text-white/45 font-black mb-0.5 ml-1">🔋 Battery — {Math.round(g.soc/city.batCap*100)}% full</div>
+        <div className="flex gap-2">
+          {modeBtn('charge','CHARGE','▲','#56e0ff','store cheap power')}
+          {modeBtn('hold','HOLD','⏸','#8a93a3','keep lights on')}
+          {modeBtn('sell','SELL','▼','#ffce3a','dump to grid €')}
+        </div>
+      </div>
+      {/* generation: turbines (control) + solar (status) */}
+      <div className="text-[10px] uppercase tracking-wider text-white/45 font-black mb-0.5 ml-1">⚡ Generation</div>
+      <div className="flex gap-2">
+        <button onClick={()=>setCtrl({turbines:!g.turbines})}
+          className="seg flex-1 rounded-lg py-1.5 px-3 border-2 active:scale-95 flex items-center justify-between"
+          style={{borderColor:g.turbines?'#5fc9ff':'#ff8a5a',background:g.turbines?'#16384a':'#3a2018',color:'#fff'}}>
+          <div className="text-left">
+            <div className="text-sm sm:text-base font-black">🌬 Turbines</div>
+            <div className="text-[10px] font-bold" style={{color:g.turbines?'#8fd6ff':'#ffb499'}}>{g.turbines?'tap to stop':'stopped for birds'}</div>
+          </div>
+          <div className="text-right">
+            <span className="text-[11px] px-2 py-0.5 rounded-full font-black" style={{background:g.turbines?'#5fc9ff':'#ff8a5a',color:'#0c1220'}}>{g.turbines?'RUNNING':'STOPPED'}</span>
+            <div className="font-black text-sm mt-0.5">{Math.round(g.wind)} kW</div>
+          </div>
+        </button>
+        {(()=>{ const day=g.hour>=city.sunrise&&g.hour<=city.sunset; const clouded=day&&g.cloudCover>0.08;
+          const st=!day?{t:'RESTING',s:'panels asleep',c:'#8a93a3',ic:'🌙',bg:'#1a1f2b'}
+            :clouded?{t:'CLOUDED',s:`−${Math.round(g.cloudCover*70)}% output`,c:'#ffb14a',ic:'☁',bg:'#2a2418'}
+            :{t:'FULL SUN',s:'clear skies',c:'#ffce3a',ic:'☀',bg:'#2a2710'};
+          return (<div className="flex-1 rounded-lg py-1.5 px-3 border-2 flex items-center justify-between" style={{borderColor:st.c,background:st.bg}}>
+            <div className="text-left">
+              <div className="text-sm sm:text-base font-black text-white">{st.ic} Solar</div>
+              <div className="text-[10px] font-bold" style={{color:st.c}}>{st.s}</div>
+            </div>
+            <div className="text-right">
+              <span className="text-[11px] px-2 py-0.5 rounded-full font-black" style={{background:st.c,color:'#0c1220'}}>{st.t}</span>
+              <div className="font-black text-sm mt-0.5 text-white">{Math.round(g.solar)} kW</div>
+            </div>
+          </div>); })()}
+      </div>
+      {/* live flow readout */}
+      <div className="text-center text-[11px] font-bold" style={{color:'#ffffff99'}}>
+        ⚡ To grid <span style={{color:'#b6ff7a'}}>{Math.round(g.exportKw)} kW</span> · <span style={{color:g.revRate>=0?'#b6ff7a':'#ff9d9d'}}>{g.revRate>=0?'+':''}€{g.revRate.toFixed(0)}/h</span>
+        {g.fromBat>0.5?<span> · 🔋 selling {Math.round(g.fromBat)} kW</span>:(g.toBat>0.5?<span> · 🔋 charging {Math.round(g.toBat)} kW</span>:null)}
+      </div>
+      {hasBirds && <div className="text-center text-[11px] font-semibold" style={{color: g.birdState==='danger'&&g.turbines?'#ff8a8a':'#ffffff66'}}>
+        🦅 STOP the turbines when a flock flies in — a strike costs €{STRIKE_FINE}.</div>}
+    </div>
+  );
+}
+
+/* ============================== Overlays =========================== */
+function shade(hex){const r=hexToRgb(hex);return `rgb(${Math.round(r[0]*0.55)},${Math.round(r[1]*0.55)},${Math.round(r[2]*0.55)})`;}
+function Modal({children,accent}){
+  return (<div className="fixed inset-0 z-50 flex items-center justify-center p-3" style={{background:'rgba(6,10,22,.82)'}}>
+    <div className="w-full max-w-md rounded-2xl p-5 popIn border-2 nodrag max-h-[92vh] overflow-y-auto"
+      style={{background:'#141a28',borderColor:accent||'#ffd84a',boxShadow:'0 16px 50px rgba(0,0,0,.6)'}}>{children}</div></div>);
+}
+function Btn({onClick,children,color}){
+  return (<button onClick={onClick} className="w-full mt-2 py-3 rounded-xl font-black text-base active:scale-95 transition-transform"
+    style={{background:color||'#ffd84a',color:'#101626',boxShadow:`0 6px 0 ${shade(color||'#ffd84a')}`}}>{children}</button>);
+}
+function Tutorial({onStart}){
+  return (<Modal>
+    <div className="flex items-center gap-2 mb-1">
+      <img src={ATA_LOGO} alt="ATA Insights" className="h-9 bg-white rounded-md p-1 shadow"/>
+      <div className="text-2xl font-black" style={{color:'#ffd84a'}}>⚡ GRID S/HERO</div>
+    </div>
+    <div className="text-sm text-white/80 mb-3 font-semibold">Run renewable mini-grids around the world. Keep the lights on — and beat each city's revenue target.</div>
+    <ul className="text-[13px] text-white/85 space-y-2 mb-2 font-medium">
+      <li>🎯 Hit the daily <b>revenue target</b> without ever letting the buildings go dark.</li>
+      <li>💶 Surplus solar &amp; wind sell to the grid automatically. The price swings all day — cheap at night &amp; midday, pricey in the evening.</li>
+      <li>🔋 <b>Battery:</b> three buttons. <span style={{color:'#56e0ff'}}>CHARGE</span> when power's cheap, <span style={{color:'#8a93a3'}}>HOLD</span> to keep reserve, <span style={{color:'#ffce3a'}}>SELL</span> to dump into the evening price peak. Discharging costs ~€8/MWh in wear — only SELL when the price is high!</li>
+      <li>🛡️ The battery <b>automatically keeps the lights on</b> whenever generation dips — sipping just what's needed. You only black out if it runs <b>completely empty</b>, so keep some charge in reserve.</li>
+      <li>☁️ <b>Clouds</b> cut solar output and 🦅 <b>birds</b> fly into some wind parks — <b>STOP the turbines</b> until they pass, or pay a strike fine.</li>
+      <li>🏙 If the battery empties during a shortfall the lights flicker — recharge within 2 seconds or it's game over.</li>
+    </ul>
+    <Btn onClick={onStart} color="#7CFC9B">▶ CHOOSE A CITY</Btn>
+  </Modal>);
+}
+function CitySelect({unlocked,onPick}){
+  return (<Modal accent="#56e0ff">
+    <div className="text-xl font-black mb-1" style={{color:'#56e0ff'}}>🗺 Pick your grid</div>
+    <div className="text-xs text-white/60 mb-3 font-semibold">Each city teaches a different challenge. Clear one to unlock the next.</div>
+    <div className="space-y-2">
+      {CITIES.map((c,i)=>{const locked=i>=unlocked;
+        return (<button key={c.id} disabled={locked} onClick={()=>onPick(i)}
+          className="w-full text-left rounded-xl p-3 border-2 active:scale-[0.98] transition-transform disabled:opacity-40"
+          style={{borderColor:locked?'#39414f':c.accent,background:'#0e1422'}}>
+          <div className="flex items-center justify-between">
+            <div className="font-black text-base" style={{color:locked?'#8a93a3':c.accent}}>{locked?'🔒 ':''}{c.id}. {c.name}</div>
+            <div className="text-xs font-black text-white/80">🎯 €{fmt(c.target)}</div></div>
+          <div className="text-[11px] text-white/60 font-semibold mt-0.5">{c.special}</div></button>);
+      })}
+    </div>
+  </Modal>);
+}
+function CityIntro({city,onGo,onBack}){
+  return (<Modal accent={city.accent}>
+    <div className="text-xs uppercase tracking-widest text-white/50 font-black">City {city.id} · {city.region}</div>
+    <div className="text-2xl font-black mb-1" style={{color:city.accent}}>{city.name}</div>
+    <div className="text-sm text-white/85 mb-2 font-semibold">{city.lesson}</div>
+    <div className="rounded-xl p-3 mb-2 border border-white/10" style={{background:'#0e1422'}}>
+      <div className="text-[11px] uppercase tracking-wide text-amber-300 font-black mb-1">⭐ What's special here</div>
+      <div className="text-sm text-white/90 font-semibold">{city.special}</div></div>
+    <div className="grid grid-cols-2 gap-2 text-[12px] text-white/75 font-semibold mb-2">
+      <div>🎯 Target: <b style={{color:city.accent}}>€{fmt(city.target)}</b></div>
+      <div>☀ Solar: {city.solarCap} kW</div>
+      <div>🌬 Wind: {city.windMax} kW</div>
+      <div>🔋 Battery: {city.batCap} kWh</div>
+      <div>🏙 Peak demand: {city.demPeak} kW</div>
+      <div>📈 Eve. price: ~€{city.eve}</div>
+    </div>
+    <Btn onClick={onGo} color={city.accent}>▶ ENTER THE DAY</Btn>
+    <button onClick={onBack} className="w-full mt-2 py-2 rounded-xl font-bold text-sm text-white/70 border border-white/15">← Back to map</button>
+  </Modal>);
+}
+function Row({k,v,c}){
+  return (<div className="flex items-center justify-between bg-black/30 rounded-lg px-3 py-2 border border-white/10">
+    <span className="text-[13px] text-white/75 font-semibold">{k}</span><span className="font-black" style={{color:c||'#fff'}}>{v}</span></div>);
+}
+function Results({r,onNext,onRetry,onMap,hasNext}){
+  const won=r.won, c=r.city;
+  return (<Modal accent={won?'#7CFC9B':'#ff7a7a'}>
+    <div className="text-3xl font-black mb-1" style={{color:won?'#7CFC9B':'#ff7a7a'}}>{won?'☀ DAY CLEARED!':'🌑 TARGET MISSED'}</div>
+    <div className="text-sm text-white/70 mb-3 font-semibold">{won?`You beat ${c.name}'s target and kept every light on.`:'The lights survived, but revenue fell short. Tune your battery timing and try again.'}</div>
+    <div className="space-y-2 mb-2">
+      <Row k="💰 Revenue earned" v={`€${fmt(r.money)}`} c={won?'#7CFC9B':'#fff'}/>
+      <Row k="🎯 Target" v={`€${fmt(c.target)}`}/>
+      <Row k="🔋 Lost to battery wear" v={`−€${fmt(r.degCost)}`} c="#ff9d6b"/>
+      {c.birdFreq>0 && <Row k="🦅 Bird-strike fines" v={`−€${fmt(r.strikeCost)} (${r.strikes})`} c={r.strikes>0?'#ff7a7a':'#7CFC9B'}/>}
+      <Row k="⚠ Near-misses (low power)" v={`${r.nearMisses}`} c={r.nearMisses>0?'#f5b942':'#7CFC9B'}/>
+    </div>
+    {won && hasNext && <Btn onClick={onNext} color="#7CFC9B">▶ NEXT CITY</Btn>}
+    {won && !hasNext && <Btn onClick={onMap} color="#7CFC9B">🏆 You've mastered every grid! Map</Btn>}
+    {!won && <Btn onClick={onRetry} color="#ffd84a">↻ RETRY {c.name}</Btn>}
+    <button onClick={onMap} className="w-full mt-2 py-2 rounded-xl font-bold text-sm text-white/70 border border-white/15">🗺 City map</button>
+  </Modal>);
+}
+function GameOver({r,onRetry,onMap}){
+  const c=r.city;
+  return (<Modal accent="#ff4d4d">
+    <div className="text-3xl font-black mb-1" style={{color:'#ff4d4d'}}>💥 BLACKOUT!</div>
+    <div className="text-sm text-white/80 mb-3 font-semibold">{c.name} lost power — your battery ran completely empty during a shortfall. Keep it on <b style={{color:'#56e0ff'}}>CHARGE</b> through cheap/sunny hours and don't over-<b style={{color:'#ffce3a'}}>SELL</b>, so there's always reserve to cover wind lulls, clouds and bird-stops.</div>
+    <div className="space-y-2 mb-3">
+      <Row k="🕐 Reached" v={clock(r.hour)}/>
+      <Row k="💰 Banked before failure" v={`€${fmt(r.money)}`}/>
+      <Row k="⚠ Near-misses" v={`${r.nearMisses}`} c="#f5b942"/>
+    </div>
+    <Btn onClick={onRetry} color="#ffd84a">↻ RETRY</Btn>
+    <button onClick={onMap} className="w-full mt-2 py-2 rounded-xl font-bold text-sm text-white/70 border border-white/15">🗺 City map</button>
+  </Modal>);
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
