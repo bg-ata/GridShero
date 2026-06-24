@@ -65,6 +65,11 @@ const STR={
   rRev:"💰 Revenue earned", rTarget:"🎯 Target", rWear:"🔋 Lost to battery wear", rFines:"🦅 Bird-strike fines", rMisses:"⚠ Near-misses (low power)",
   rNext:"▶ NEXT CITY", rMastered:"🏆 You've mastered every grid! Map", rRetry:(n)=>`↻ RETRY ${n}`, rMap:"🗺 City map",
   goTitle:"💥 BLACKOUT!", goReached:"🕐 Reached", goBanked:"💰 Banked before failure", goMisses:"⚠ Near-misses", goRetry:"↻ RETRY",
+  enterName:"Enter your name", nameHint:"It'll show on the leaderboard.", letsGo:"▶ LET'S GO",
+  welcomeBack:(n)=>`Welcome back, ${n}!`, continueBtn:"▶ CONTINUE", startFresh:"Not you? Start fresh",
+  leaderboard:"🏆 Leaderboard", lbOverall:"🌍 Overall", lbCities:"cities", lbEmpty:"No scores yet — be the first BESS BOSS!", lbOffline:"The online leaderboard is being switched on. Your personal bests:", lbLoading:"Loading…",
+  yourBests:"Your best scores", noBests:"No scores yet — clear a city!", totalScore:"Total", close:"Close", howToPlay:"How to play", helpBtn:"❔ How to play",
+  bossYou:"YOU ARE THE BESS BOSS!", bossCleared:(c)=>`${c} cleared`,
  },
  es:{
   pickLangTitle:"Elige tu idioma", pickLangSub:"Puedes cambiar cuando quieras desde el mapa de ciudades.",
@@ -88,10 +93,31 @@ const STR={
   rRev:"💰 Ingresos obtenidos", rTarget:"🎯 Objetivo", rWear:"🔋 Perdido por desgaste", rFines:"🦅 Multas por aves", rMisses:"⚠ Sustos (poca potencia)",
   rNext:"▶ SIGUIENTE CIUDAD", rMastered:"🏆 ¡Dominaste todas las redes! Mapa", rRetry:(n)=>`↻ REINTENTAR ${n}`, rMap:"🗺 Mapa de ciudades",
   goTitle:"💥 ¡APAGÓN!", goReached:"🕐 Alcanzado", goBanked:"💰 Ganado antes del fallo", goMisses:"⚠ Sustos", goRetry:"↻ REINTENTAR",
+  enterName:"Escribe tu nombre", nameHint:"Aparecerá en la clasificación.", letsGo:"▶ ¡VAMOS!",
+  welcomeBack:(n)=>`¡Hola de nuevo, ${n}!`, continueBtn:"▶ CONTINUAR", startFresh:"¿No eres tú? Empezar de cero",
+  leaderboard:"🏆 Clasificación", lbOverall:"🌍 General", lbCities:"ciudades", lbEmpty:"Aún no hay puntuaciones, ¡sé el primer BESS BOSS!", lbOffline:"La clasificación online se está activando. Tus mejores marcas:", lbLoading:"Cargando…",
+  yourBests:"Tus mejores marcas", noBests:"Aún no hay marcas, ¡supera una ciudad!", totalScore:"Total", close:"Cerrar", howToPlay:"Cómo jugar", helpBtn:"❔ Cómo jugar",
+  bossYou:"¡ERES EL BESS BOSS!", bossCleared:(c)=>`${c} superada`,
  },
 };
 const t=(k,...a)=>{ const v=(STR[LANG]&&STR[LANG][k]!==undefined)?STR[LANG][k]:(STR.en[k]!==undefined?STR.en[k]:k); return typeof v==='function'?v(...a):v; };
 const ct=(c,f)=> (LANG==='es'&&c[f+'_es'])?c[f+'_es']:c[f];
+
+/* ============ persistence (save / resume) + leaderboard ============ */
+const SAVE_KEY='gridshero_save_v2';
+function loadSave(){ try{ const s=JSON.parse(localStorage.getItem(SAVE_KEY)); if(s&&typeof s==='object') return {name:'',lang:'en',unlocked:1,badges:[],best:{},...s}; }catch(e){} return {name:'',lang:'en',unlocked:1,badges:[],best:{}}; }
+function writeSave(s){ try{ localStorage.setItem(SAVE_KEY,JSON.stringify(s)); }catch(e){} }
+
+// ▼▼ paste your Supabase Project URL + anon public key here to switch the shared leaderboard ON ▼▼
+const SUPA_URL="";
+const SUPA_KEY="";
+const SUPA_ON = !!(SUPA_URL && SUPA_KEY);
+async function lbSubmit(name,city,score){ if(!SUPA_ON) return; try{ await fetch(SUPA_URL+'/rest/v1/scores',{method:'POST',headers:{apikey:SUPA_KEY,Authorization:'Bearer '+SUPA_KEY,'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify({name:String(name).slice(0,16),city,score})}); }catch(e){} }
+async function lbFetch(){ if(!SUPA_ON) return null; try{ const r=await fetch(SUPA_URL+'/rest/v1/scores?select=name,city,score&order=created_at.desc&limit=1000',{headers:{apikey:SUPA_KEY,Authorization:'Bearer '+SUPA_KEY}}); if(!r.ok) return null; return await r.json(); }catch(e){ return null; } }
+function lbAggregate(rows){ const m={}; (rows||[]).forEach(r=>{ const k=(r.name||'???'); (m[k]=m[k]||{name:k,best:{}}); m[k].best[r.city]=Math.max(m[k].best[r.city]||0, r.score||0); }); return Object.values(m).map(p=>({name:p.name,total:Object.values(p.best).reduce((a,b)=>a+b,0),cities:Object.keys(p.best).length})).sort((a,b)=>b.total-a.total).slice(0,20); }
+
+// ▼ BESS BOSS reward artwork — paste a data: URI here when ready (else a styled banner shows) ▼
+const BOSS_ART="";
 
 /* ============================== helpers ============================== */
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -134,60 +160,87 @@ function priceAt(hour,night,dip,eve){
 
 /* ============================ city profiles ========================= */
 const CITIES=[
-  { id:1, name:'Sevilla', region:'Andalusia, Spain', accent:'#ffce3a', factor:0.48,
+  { id:1, name:'Sevilla', region:'Andalusia, Spain · Europe', accent:'#ffce3a', factor:0.48,
     solarCap:1830, windMax:730, batCap:3000, batRate:700, demBase:60, demPeak:150, shape:'evening',
     night:42, dip:28, eve:120, cloudFreq:0.20, cloudDark:0.5, windGust:1.0, birdFreq:0, dayLen:165,
     sunrise:6, sunset:20, hue:'#7ed957',
     lesson:'Sunshine for days. Let the midday surplus sell itself, bank a little in the battery, and cash out into the evening price peak.',
     special:'A gentle starter grid — no birds, light clouds.',
-    region_es:'Andalucía, España',
+    region_es:'Andalucía, España · Europa',
     lesson_es:'Sol a raudales. Deja que el excedente del mediodía se venda solo, guarda algo en la batería y cobra en el pico de precios de la tarde.',
     special_es:'Una red sencilla para empezar: sin aves, pocas nubes.' },
-  { id:2, name:'Tarifa', region:'Strait of Gibraltar, Spain', accent:'#3fd0d6', factor:0.55,
-    solarCap:780, windMax:1960, batCap:3500, batRate:800, demBase:70, demPeak:165, shape:'evening',
+  { id:2, name:'Buenos Aires', region:'Argentina · South America', accent:'#5fc9ff', factor:0.52,
+    solarCap:1700, windMax:1480, batCap:1700, batRate:450, demBase:70, demPeak:170, shape:'evening',
+    night:40, dip:30, eve:125, cloudFreq:0.35, cloudDark:0.6, windGust:1.2, birdFreq:0.2, dayLen:162,
+    sunrise:6.5, sunset:19.5, hue:'#7fb5d6',
+    lesson:'A balanced grid on the Río de la Plata — steady sun, Pampas wind and a mild evening peak. A friendly all-rounder to sharpen your timing.',
+    special:'🌎 Balanced sun + wind, gentle evening demand. A good early challenge.',
+    region_es:'Argentina · Sudamérica',
+    lesson_es:'Una red equilibrada en el Río de la Plata: sol estable, viento de la Pampa y un pico de tarde suave. Un todoterreno amable para afinar tu cronometraje.',
+    special_es:'🌎 Sol y viento equilibrados, demanda de tarde suave. Buen reto temprano.' },
+  { id:3, name:'Tarifa', region:'Gibraltar Strait, Spain · Europe', accent:'#3fd0d6', factor:0.56,
+    solarCap:870, windMax:2180, batCap:1700, batRate:430, demBase:70, demPeak:165, shape:'evening',
     night:44, dip:30, eve:140, cloudFreq:0.38, cloudDark:0.7, windGust:1.7, birdFreq:1.0, dayLen:158,
     sunrise:6.5, sunset:19.5, hue:'#6fcf8f',
     lesson:'The windiest town in Europe — and a major bird-migration crossing. STOP the turbines when flocks pass (you lose income briefly), then ride the gusts.',
     special:'🦅 Birds! Stop the turbines when they fly in. Gusty, cloudy.',
-    region_es:'Estrecho de Gibraltar, España',
+    region_es:'Estrecho de Gibraltar, España · Europa',
     lesson_es:'El pueblo más ventoso de Europa, y un gran paso de aves migratorias. PARA las turbinas cuando pasen las bandadas (pierdes ingresos un momento) y luego aprovecha las rachas.',
     special_es:'🦅 ¡Aves! Para las turbinas cuando lleguen. Ventoso y nublado.' },
-  { id:3, name:'Tokyo', region:'Japan', accent:'#ff6ad5', factor:0.62,
-    solarCap:1710, windMax:1480, batCap:4000, batRate:1000, demBase:120, demPeak:300, shape:'evening',
-    night:56, dip:36, eve:185, cloudFreq:0.40, cloudDark:0.7, windGust:1.3, birdFreq:0.3, dayLen:150,
-    sunrise:6.5, sunset:19.5, hue:'#5d9ce8',
-    lesson:'Demand explodes after dark. Hoard the battery all day, then SELL hard into the 7–9pm price peak.',
-    special:'💡 Brutal evening demand & high prices. A few birds.',
-    region_es:'Japón',
-    lesson_es:'La demanda se dispara al anochecer. Acumula batería todo el día y VENDE fuerte en el pico de precios de 19:00 a 21:00.',
-    special_es:'💡 Demanda nocturna brutal y precios altos. Algunas aves.' },
-  { id:4, name:'Ouarzazate', region:'Sahara, Morocco', accent:'#ff9d3a', factor:0.68,
-    solarCap:4000, windMax:560, batCap:3000, batRate:800, demBase:80, demPeak:240, shape:'midday',
-    night:34, dip:22, eve:150, cloudFreq:0.24, cloudDark:0.6, windGust:0.8, birdFreq:0.2, dayLen:150,
-    sunrise:6, sunset:20, hue:'#e0b15c',
-    lesson:'Home of the Noor mega-solar farm: sun is everything, the wind barely blows. Bank the morning glut to survive the midday A/C spike and the long desert night.',
-    special:'🌵 Sahara mega-solar (think Noor). Almost no wind; demand peaks at midday.',
-    region_es:'Sáhara, Marruecos',
-    lesson_es:'Hogar de la megaplanta solar Noor: el sol lo es todo, el viento apenas sopla. Guarda el excedente de la mañana para aguantar el pico de aire acondicionado del mediodía y la larga noche del desierto.',
-    special_es:'🌵 Megasolar del Sáhara (tipo Noor). Casi sin viento; la demanda pica al mediodía.' },
-  { id:5, name:'Mumbai', region:'Maharashtra, India', accent:'#5be58a', factor:0.74,
-    solarCap:3550, windMax:1970, batCap:4500, batRate:1000, demBase:85, demPeak:210, shape:'evening',
-    night:46, dip:30, eve:150, cloudFreq:0.66, cloudDark:0.92, windGust:1.6, birdFreq:1.2, dayLen:146,
+  { id:4, name:'Cape Town', region:'South Africa · Africa', accent:'#ffa64a', factor:0.62,
+    solarCap:1870, windMax:2110, batCap:2200, batRate:560, demBase:85, demPeak:230, shape:'evening',
+    night:42, dip:26, eve:155, cloudFreq:0.35, cloudDark:0.65, windGust:1.5, birdFreq:0.3, dayLen:154,
+    sunrise:6, sunset:19.5, hue:'#c98a4a',
+    lesson:'Below Table Mountain, the fierce "Cape Doctor" wind and strong sun battle rolling blackouts (load-shedding). Bank power hard so your minigrid never goes dark when the wind drops.',
+    special:'⚡ Strong wind + sun, but high demand and load-shedding pressure. Keep reserves up.',
+    region_es:'Sudáfrica · África',
+    lesson_es:'Bajo Table Mountain, el fiero viento "Cape Doctor" y un sol potente luchan contra los apagones rotativos (load-shedding). Acumula energía a tope para que tu minired nunca se apague cuando cae el viento.',
+    special_es:'⚡ Mucho viento y sol, pero alta demanda y presión de apagones. Mantén reservas altas.' },
+  { id:5, name:'Santiago de Compostela', region:'Galicia, Spain · Europe', accent:'#7fe0a0', factor:0.68,
+    solarCap:1460, windMax:2530, batCap:2200, batRate:560, demBase:80, demPeak:190, shape:'evening',
+    night:45, dip:32, eve:135, cloudFreq:0.62, cloudDark:0.85, windGust:1.6, birdFreq:0.3, dayLen:152,
+    sunrise:7, sunset:19, hue:'#3f9d63',
+    lesson:'Green, wet Galicia: the sun hides behind Atlantic clouds for hours, but the wind delivers. Lean on wind + battery and SELL the moment a cloud kills your solar.',
+    special:'☁️ Very cloudy, wind-led, low sun. Constant battery juggling.',
+    region_es:'Galicia, España · Europa',
+    lesson_es:'Galicia verde y húmeda: el sol se esconde tras las nubes atlánticas durante horas, pero el viento responde. Apóyate en viento + batería y VENDE en cuanto una nube apague tu solar.',
+    special_es:'☁️ Muy nublado, dominado por el viento, poco sol. Malabares de batería constantes.' },
+  { id:6, name:'Sydney', region:'Australia · Oceania', accent:'#5fd0e6', factor:0.72,
+    solarCap:2300, windMax:2060, batCap:2400, batRate:610, demBase:90, demPeak:220, shape:'evening',
+    night:40, dip:22, eve:165, cloudFreq:0.30, cloudDark:0.55, windGust:1.4, birdFreq:0.4, dayLen:150,
+    sunrise:6, sunset:20, hue:'#5fa9c9',
+    lesson:'Harbour-city Australia runs on rooftop solar and big batteries, with prices that swing wildly. Hoard the cheap midday solar glut and unleash it into the evening peak.',
+    special:'🔋 Big solar + wind + wild prices. Master the battery arbitrage.',
+    region_es:'Australia · Oceanía',
+    lesson_es:'La ciudad del puerto vive de la solar en tejados y grandes baterías, con precios que oscilan muchísimo. Acumula el excedente solar barato del mediodía y suéltalo en el pico de la tarde.',
+    special_es:'🔋 Mucha solar + viento + precios locos. Domina el arbitraje de batería.' },
+  { id:7, name:'Mumbai', region:'Maharashtra, India · Asia', accent:'#5be58a', factor:0.76,
+    solarCap:3670, windMax:2040, batCap:3100, batRate:800, demBase:85, demPeak:210, shape:'evening',
+    night:46, dip:30, eve:150, cloudFreq:0.66, cloudDark:0.92, windGust:1.6, birdFreq:1.2, dayLen:148,
     sunrise:6, sunset:19, hue:'#52b06a',
     lesson:'Dark clouds smother the panels without warning and birds love this coast. React fast — SELL when PV drops, stop the turbines for flocks.',
     special:'⛈️ Heavy clouds + lots of birds. Stay on your toes.',
-    region_es:'Maharashtra, India',
+    region_es:'Maharashtra, India · Asia',
     lesson_es:'Nubes oscuras ahogan los paneles sin avisar y a las aves les encanta esta costa. Reacciona rápido: VENDE cuando caiga la solar y para las turbinas por las bandadas.',
     special_es:'⛈️ Muchas nubes y muchas aves. Mantente alerta.' },
-  { id:6, name:'Tromsø', region:'Arctic Norway', accent:'#8fd6ff', factor:0.82,
-    solarCap:1800, windMax:3280, batCap:4500, batRate:1100, demBase:150, demPeak:330, shape:'winter',
-    night:62, dip:42, eve:205, cloudFreq:0.6, cloudDark:0.85, windGust:2.0, birdFreq:0.8, dayLen:142,
-    sunrise:9, sunset:16, hue:'#9fb8c9',
-    lesson:'Brutal cold, a tiny sun window and screaming wind. Lean on wind + battery and survive the morning & evening heating peaks.',
-    special:'❄️ Short solar day, fierce wind, double demand peak. Everything at once.',
-    region_es:'Noruega ártica',
-    lesson_es:'Frío brutal, una ventana de sol mínima y viento que aúlla. Apóyate en viento + batería y sobrevive a los picos de calefacción de mañana y tarde.',
-    special_es:'❄️ Día solar corto, viento feroz, doble pico de demanda. Todo a la vez.' },
+  { id:8, name:'Tokyo', region:'Japan · Asia', accent:'#ff6ad5', factor:0.80,
+    solarCap:2530, windMax:2190, batCap:2600, batRate:660, demBase:120, demPeak:300, shape:'evening',
+    night:56, dip:36, eve:185, cloudFreq:0.40, cloudDark:0.7, windGust:1.3, birdFreq:0.3, dayLen:146,
+    sunrise:6.5, sunset:19.5, hue:'#5d9ce8',
+    lesson:'Demand explodes after dark. Hoard the battery all day, then SELL hard into the 7–9pm price peak.',
+    special:'💡 Brutal evening demand & high prices. A few birds.',
+    region_es:'Japón · Asia',
+    lesson_es:'La demanda se dispara al anochecer. Acumula batería todo el día y VENDE fuerte en el pico de precios de 19:00 a 21:00.',
+    special_es:'💡 Demanda nocturna brutal y precios altos. Algunas aves.' },
+  { id:9, name:'Los Angeles', region:'California, USA · North America', accent:'#ff7a5d', factor:0.86,
+    solarCap:4040, windMax:2020, batCap:3300, batRate:850, demBase:100, demPeak:260, shape:'evening',
+    night:45, dip:16, eve:175, cloudFreq:0.28, cloudDark:0.55, windGust:1.1, birdFreq:0.3, dayLen:144,
+    sunrise:6, sunset:20, hue:'#d99a5c',
+    lesson:'Sun-drenched California, home of the "duck curve": so much midday solar that prices crash to almost nothing, then spike after sunset. Never SELL at noon — bank every kWh and cash out into the evening.',
+    special:'🦆 Extreme midday price crash (duck curve). Bank solar, sell at dusk — the ultimate test.',
+    region_es:'California, EE. UU. · Norteamérica',
+    lesson_es:'California bañada de sol, hogar de la "curva de pato": tanta solar al mediodía que los precios se desploman casi a cero y luego se disparan tras el ocaso. Nunca VENDAS a mediodía: guarda cada kWh y cobra al anochecer.',
+    special_es:'🦆 Desplome extremo de precios al mediodía (curva de pato). Guarda solar, vende al anochecer: la prueba definitiva.' },
 ];
 function estimateTarget(c){
   let rev=0;
@@ -225,20 +278,37 @@ function initGame(c){
 
 /* ================================ APP =============================== */
 function App(){
-  const [screen,setScreen]=useState('lang'); // lang|tutorial|select|intro|playing|results|gameover
+  const saveRef=useRef(loadSave());
+  const li=useRef(false); if(!li.current){ LANG=saveRef.current.lang||'en'; li.current=true; }
+  const [save,setSave]=useState(saveRef.current);
+  const updateSave=(patch)=>{ const ns={...saveRef.current,...patch}; saveRef.current=ns; setSave(ns); writeSave(ns); };
+  const [screen,setScreen]=useState(saveRef.current.name?'welcome':'lang'); // lang|name|welcome|tutorial|select|leaderboard|intro|playing|results|gameover
   const [cityIdx,setCityIdx]=useState(0);
-  const [unlocked,setUnlocked]=useState(1);
+  const [unlocked,setUnlocked]=useState(saveRef.current.unlocked||1);
   const [,setLangTick]=useState(0);
-  const setLang=(l)=>{ LANG=l; setLangTick(x=>x+1); };
+  const setLang=(l)=>{ LANG=l; updateSave({lang:l}); setLangTick(x=>x+1); };
+  const [help,setHelp]=useState(false);
   const [g,setG]=useState(()=>initGame(CITIES[0]));
   const [floaters,setFloaters]=useState([]);
-  const [bigAlert,setBigAlert]=useState(null);
   const cityRef=useRef(CITIES[0]); cityRef.current=CITIES[cityIdx];
   const fAcc=useRef(0); const fTick=useRef(0); const fid=useRef(0);
   const result=useRef(null);
 
   const enterCity=useCallback((idx)=>{ setCityIdx(idx); cityRef.current=CITIES[idx];
-    setG(initGame(CITIES[idx])); setFloaters([]); setBigAlert(null); setScreen('intro'); },[]);
+    setG(initGame(CITIES[idx])); setFloaters([]); setScreen('intro'); },[]);
+
+  // record a win: badge, best score, unlock next city, submit to the leaderboard
+  useEffect(()=>{
+    if(screen==='results' && result.current && result.current.won && !result.current.recorded){
+      result.current.recorded=true;
+      const c=result.current.city, money=Math.round(result.current.money);
+      const best={...saveRef.current.best}; if(money>(best[c.id]||0)) best[c.id]=money;
+      const badges=saveRef.current.badges.includes(c.id)?saveRef.current.badges:[...saveRef.current.badges,c.id];
+      const unlockedN=Math.min(CITIES.length, Math.max(saveRef.current.unlocked, c.id+1));
+      updateSave({best,badges,unlocked:unlockedN}); setUnlocked(unlockedN);
+      lbSubmit(saveRef.current.name||'???', c.id, money);
+    }
+  },[screen]);
 
   useEffect(()=>{
     if(screen!=='playing') return;
@@ -341,27 +411,31 @@ function App(){
   return (
     <div className="h-[100dvh] w-full flex flex-col items-center text-white overflow-hidden">
       <div className="w-full max-w-[1000px] h-full flex flex-col px-2 sm:px-3 pt-1 pb-2 overflow-hidden">
-        <Header city={city} g={g}/>
+        <Header city={city} g={g} onHelp={()=>setHelp(true)}/>
         <div className="relative flex-1 min-h-0 my-1"><World g={g} city={city} floaters={floaters}/></div>
         <Hud g={g} city={city}/>
         <Controls g={g} city={city} setCtrl={setCtrl}/>
       </div>
 
-      {screen==='lang' && <LangSelect onPick={(l)=>{ setLang(l); setScreen('tutorial'); }}/>}
+      {screen==='lang' && <LangSelect onPick={(l)=>{ setLang(l); setScreen(saveRef.current.name?'welcome':'name'); }}/>}
+      {screen==='name' && <NameEntry initial={saveRef.current.name} onDone={(nm)=>{ updateSave({name:nm}); setScreen('tutorial'); }}/>}
+      {screen==='welcome' && <Welcome name={saveRef.current.name} onContinue={()=>setScreen('select')} onFresh={()=>{ updateSave({name:'',unlocked:1,badges:[],best:{}}); setUnlocked(1); setScreen('lang'); }}/>}
       {screen==='tutorial' && <Tutorial onStart={()=>setScreen('select')}/>}
-      {screen==='select' && <CitySelect unlocked={unlocked} onPick={enterCity} setLang={setLang}/>}
+      {screen==='select' && <CitySelect unlocked={unlocked} onPick={enterCity} setLang={setLang} save={save} onBoard={()=>setScreen('leaderboard')} onHelp={()=>setHelp(true)}/>}
+      {screen==='leaderboard' && <Leaderboard save={save} onClose={()=>setScreen('select')}/>}
       {screen==='intro' && <CityIntro city={city} onGo={()=>setScreen('playing')} onBack={()=>setScreen('select')}/>}
-      {screen==='results' && <Results r={result.current}
-          onNext={()=>{ const ni=Math.min(cityIdx+1,CITIES.length-1); if(result.current.won)setUnlocked(u=>Math.max(u,ni+1)); enterCity(ni); }}
-          onRetry={()=>enterCity(cityIdx)} onMap={()=>{ if(result.current.won)setUnlocked(u=>Math.max(u,cityIdx+2)); setScreen('select'); }}
+      {screen==='results' && <Results r={result.current} save={save}
+          onNext={()=>{ const ni=Math.min(cityIdx+1,CITIES.length-1); enterCity(ni); }}
+          onRetry={()=>enterCity(cityIdx)} onMap={()=>setScreen('select')}
           hasNext={cityIdx<CITIES.length-1}/>}
       {screen==='gameover' && <GameOver r={result.current} onRetry={()=>enterCity(cityIdx)} onMap={()=>setScreen('select')}/>}
+      {help && <Help onClose={()=>setHelp(false)}/>}
     </div>
   );
 }
 
 /* =============================== Header ============================= */
-function Header({city,g}){
+function Header({city,g,onHelp}){
   const pct=clamp(g.money/city.target,0,1);
   const dayPct=clamp(g.hour/24,0,1);
   return (
@@ -374,10 +448,13 @@ function Header({city,g}){
             <div className="text-[10px] sm:text-xs font-bold truncate" style={{color:city.accent}}>📍 {city.name} <span className="text-white/45">· {ct(city,'region')}</span></div>
           </div>
         </div>
-        <div className="text-right shrink-0">
-          <div className="text-[9px] sm:text-[11px] uppercase tracking-wider text-white/55 font-bold leading-none">{t('revTarget')}</div>
-          <div className="font-black text-sm sm:text-xl leading-tight" style={{color:g.money>=city.target?'#7CFC9B':'#fff'}}>
-            €{fmt(g.money)} <span className="text-white/45 text-xs sm:text-sm">/ €{fmt(city.target)}</span></div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button onClick={onHelp} title={t('howToPlay')} className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border-2 border-white/25 text-white/85 font-black text-sm leading-none active:scale-90">?</button>
+          <div className="text-right">
+            <div className="text-[9px] sm:text-[11px] uppercase tracking-wider text-white/55 font-bold leading-none">{t('revTarget')}</div>
+            <div className="font-black text-sm sm:text-xl leading-tight" style={{color:g.money>=city.target?'#7CFC9B':'#fff'}}>
+              €{fmt(g.money)} <span className="text-white/45 text-xs sm:text-sm">/ €{fmt(city.target)}</span></div>
+          </div>
         </div>
       </div>
       <div className="mt-1 h-2.5 rounded-full bg-black/40 overflow-hidden border border-white/10">
@@ -388,6 +465,54 @@ function Header({city,g}){
       </div>
     </div>
   );
+}
+
+/* ===== per-city landmark silhouettes (sense of place) ===== */
+function Landmark({city}){
+  const s=lerpColor(city.accent,'#222d45',0.55), w='#eaf0f8';
+  switch(city.name){
+    case 'Sevilla': return (<g opacity="0.9">
+      <rect x="-22" y="-150" width="44" height="150" fill={s}/><rect x="-16" y="-186" width="32" height="40" fill={s}/>
+      <path d="M-14,-186 L0,-208 L14,-186 Z" fill={s}/><circle cx="0" cy="-214" r="4" fill={s}/>
+      <rect x="-12" y="-138" width="6" height="20" fill={w} opacity="0.45"/><rect x="6" y="-138" width="6" height="20" fill={w} opacity="0.45"/></g>);
+    case 'Buenos Aires': return (<g opacity="0.9">
+      <rect x="-15" y="-28" width="30" height="28" fill={s}/><path d="M-12,-28 L-5,-188 L5,-188 L12,-28 Z" fill={s}/><path d="M-5,-188 L0,-206 L5,-188 Z" fill={s}/></g>);
+    case 'Tarifa': return (<g opacity="0.9">
+      <path d="M-16,0 L-10,-128 L10,-128 L16,0 Z" fill={s}/><rect x="-13" y="-152" width="26" height="24" fill={s}/>
+      <path d="M-15,-152 L0,-170 L15,-152 Z" fill={s}/><circle cx="0" cy="-140" r="7" fill={w} opacity="0.85"/>
+      <rect x="-16" y="-96" width="32" height="6" fill={w} opacity="0.4"/><rect x="-15" y="-64" width="30" height="6" fill={w} opacity="0.4"/></g>);
+    case 'Cape Town': return (<g opacity="0.92">
+      <path d="M-165,0 L-128,-80 L70,-80 L96,-56 L150,0 Z" fill={s}/><path d="M-128,-80 L-110,-92 L60,-92 L70,-80 Z" fill={s}/>
+      <path d="M92,0 L122,-120 L155,0 Z" fill={s}/></g>);
+    case 'Santiago de Compostela': return (<g opacity="0.9">
+      <rect x="-30" y="-92" width="60" height="92" fill={s}/><path d="M-34,-92 L0,-120 L34,-92 Z" fill={s}/>
+      <rect x="-60" y="-150" width="26" height="150" fill={s}/><path d="M-60,-150 L-47,-172 L-34,-150 Z" fill={s}/>
+      <rect x="34" y="-150" width="26" height="150" fill={s}/><path d="M34,-150 L47,-172 L60,-150 Z" fill={s}/>
+      <circle cx="-47" cy="-178" r="4" fill={s}/><circle cx="47" cy="-178" r="4" fill={s}/></g>);
+    case 'Sydney': return (<g opacity="0.95">
+      <path d="M-160,0 Q-95,-78 -28,-4" stroke={s} strokeWidth="7" fill="none"/>
+      <rect x="-160" y="-46" width="8" height="46" fill={s}/><rect x="-34" y="-40" width="8" height="40" fill={s}/>
+      <path d="M-44,0 Q-30,-58 2,-3 Z" fill={w} opacity="0.85"/><path d="M-20,0 Q-2,-92 38,-3 Z" fill={w}/>
+      <path d="M14,0 Q34,-72 70,-3 Z" fill={w} opacity="0.92"/><path d="M46,0 Q64,-52 96,-3 Z" fill={w} opacity="0.88"/></g>);
+    case 'Mumbai': return (<g opacity="0.9">
+      <rect x="-58" y="-100" width="26" height="100" fill={s}/><rect x="32" y="-100" width="26" height="100" fill={s}/>
+      <rect x="-58" y="-120" width="116" height="22" fill={s}/><path d="M-22,-120 Q0,-148 22,-120 Z" fill={s}/>
+      <path d="M-50,-120 Q-40,-134 -30,-120 Z" fill={s}/><path d="M30,-120 Q40,-134 50,-120 Z" fill={s}/></g>);
+    case 'Tokyo': return (<g opacity="0.9">
+      <path d="M-150,0 L0,-118 L150,0 Z" fill={lerpColor(city.accent,'#8aa6c8',0.5)} opacity="0.55"/>
+      <path d="M-34,-92 L0,-118 L34,-92 L22,-100 L11,-92 L0,-101 L-12,-92 L-23,-100 Z" fill={w} opacity="0.85"/>
+      <path d="M-30,0 L-7,-150 L7,-150 L30,0 Z" fill="#e0563a"/><path d="M-22,-52 L22,-52 L18,-88 L-18,-88 Z" fill="#e0563a"/>
+      <rect x="-2" y="-176" width="4" height="26" fill="#e0563a"/>
+      <rect x="-26" y="-30" width="52" height="4" fill={w} opacity="0.5"/><rect x="-19" y="-86" width="38" height="3" fill={w} opacity="0.5"/></g>);
+    case 'Los Angeles': return (<g opacity="0.92">
+      <path d="M-170,0 L-50,-52 L70,-46 L170,0 Z" fill={lerpColor(city.accent,'#3c4a2c',0.5)} opacity="0.7"/>
+      {[-46,-34,-22,-10,2,14,26,38].map((x,i)=>(<rect key={i} x={x} y={-58+(i%2)*2} width="6" height="16" fill={w} opacity="0.9"/>))}
+      <path d="M-120,0 C-120,-30 -122,-50 -124,-66" stroke={s} strokeWidth="5" fill="none"/>
+      <path d="M-124,-66 q-22,-6 -32,4 M-124,-66 q20,-10 34,-2 M-124,-66 q-10,-22 -2,-34 M-124,-66 q14,-18 28,-16" stroke={s} strokeWidth="4" fill="none"/>
+      <path d="M120,0 C120,-26 122,-44 124,-58" stroke={s} strokeWidth="5" fill="none"/>
+      <path d="M124,-58 q-20,-6 -30,4 M124,-58 q18,-10 30,-2 M124,-58 q-8,-20 0,-30 M124,-58 q12,-16 24,-14" stroke={s} strokeWidth="4" fill="none"/></g>);
+    default: return null;
+  }
 }
 
 /* ================================ World ============================= */
@@ -444,6 +569,9 @@ function World({g,city,floaters}){
         <path d="M0,430 Q170,350 360,415 T720,405 T1000,420 L1000,560 L0,560 Z" fill="url(#hill1)"/>
         <path d="M0,470 Q230,405 480,460 T1000,455 L1000,560 L0,560 Z" fill="url(#hill2)"/>
         <rect x="0" y="505" width="1000" height="55" fill="url(#ground)"/>
+
+        {/* CITY LANDMARK — sense of place */}
+        <g transform="translate(500 412)"><Landmark city={city}/></g>
 
         {/* SOLAR PARK (left) — 3x4 array */}
         <g transform="translate(24 372)">
@@ -648,14 +776,95 @@ function LangSelect({onPick}){
     <Btn onClick={()=>onPick('es')} color="#ffce3a">🇪🇸 Español</Btn>
   </Modal>);
 }
-function Tutorial({onStart}){
-  return (<Modal>
-    <div className="flex items-center gap-2 mb-1">
+function NameEntry({initial,onDone}){
+  const [nm,setNm]=useState(initial||'');
+  const ok=nm.trim().length>=1;
+  return (<Modal accent="#ffce3a">
+    <div className="flex items-center gap-2 mb-3">
       <img src={ATA_LOGO} alt="ATA Insights" className="h-9 bg-white rounded-md p-1 shadow"/>
       <div className="text-2xl font-black" style={{color:'#ffd84a'}}>⚡ GRID S/HERO</div>
     </div>
-    <div className="text-sm text-white/80 mb-3 font-semibold">{t('tutSub')}</div>
-    {LANG==='es' ? (
+    <div className="text-lg font-black text-white mb-1">{t('enterName')}</div>
+    <input autoFocus value={nm} maxLength={16} onChange={e=>setNm(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter'&&ok) onDone(nm.trim()); }}
+      placeholder="BESS BOSS" className="w-full px-3 py-3 rounded-xl bg-[#0e1422] border-2 border-white/15 text-white font-black text-lg outline-none"/>
+    <div className="text-xs text-white/50 mt-1 mb-2 font-semibold">{t('nameHint')}</div>
+    <Btn onClick={()=>ok&&onDone(nm.trim())} color={ok?'#7CFC9B':'#39414f'}>{t('letsGo')}</Btn>
+  </Modal>);
+}
+function Welcome({name,onContinue,onFresh}){
+  return (<Modal accent="#7CFC9B">
+    <div className="flex items-center gap-2 mb-3">
+      <img src={ATA_LOGO} alt="ATA Insights" className="h-9 bg-white rounded-md p-1 shadow"/>
+      <div className="text-2xl font-black" style={{color:'#ffd84a'}}>⚡ GRID S/HERO</div>
+    </div>
+    <div className="text-xl font-black text-white mb-3">{t('welcomeBack',name)}</div>
+    <Btn onClick={onContinue} color="#7CFC9B">{t('continueBtn')}</Btn>
+    <button onClick={onFresh} className="w-full mt-2 py-2 rounded-xl font-bold text-sm text-white/60 border border-white/15">{t('startFresh')}</button>
+  </Modal>);
+}
+function BadgeRow({badges}){
+  return (<div className="flex gap-1 flex-wrap">
+    {CITIES.map(c=>{ const got=(badges||[]).includes(c.id);
+      return (<div key={c.id} title={c.name} className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black border-2"
+        style={{borderColor:got?c.accent:'#39414f',background:got?c.accent:'#161b27',color:got?'#0c1220':'#4b5566'}}>{got?'★':c.id}</div>);
+    })}
+  </div>);
+}
+function Leaderboard({save,onClose}){
+  const [rows,setRows]=useState(undefined); // raw rows; undefined=loading; null=none/offline
+  const [view,setView]=useState('overall'); // 'overall' | cityId
+  useEffect(()=>{ let ok=true; (async()=>{ const data=await lbFetch(); if(ok) setRows(data||null); })(); return ()=>{ok=false;}; },[]);
+  // build the ranked list for the chosen view
+  let list=null;
+  if(rows && rows.length){
+    if(view==='overall'){
+      list=lbAggregate(rows).map(p=>({name:p.name, score:p.total, sub:`${p.cities} ${t('lbCities')}`, boss:p.cities>=CITIES.length}));
+    } else {
+      const cid=Number(view), best={};
+      rows.filter(r=>r.city===cid).forEach(r=>{ best[r.name]=Math.max(best[r.name]||0, r.score||0); });
+      list=Object.entries(best).map(([name,score])=>({name,score})).sort((a,b)=>b.score-a.score).slice(0,20);
+    }
+  }
+  const me=(save&&save.name)||'';
+  const bestEntries=Object.entries(save.best||{}).map(([cid,sc])=>({city:Number(cid),score:sc})).sort((a,b)=>b.score-a.score);
+  const total=bestEntries.reduce((a,b)=>a+b.score,0);
+  return (<Modal accent="#ffd84a">
+    <div className="flex items-center justify-between mb-2">
+      <div className="text-xl font-black" style={{color:'#ffd84a'}}>{t('leaderboard')}</div>
+      <button onClick={onClose} className="text-sm font-black text-white/70 border border-white/15 rounded-lg px-3 py-1">{t('close')}</button>
+    </div>
+    {SUPA_ON && (
+      <select value={view} onChange={e=>setView(e.target.value)}
+        className="w-full mb-2 px-3 py-2 rounded-lg bg-[#0e1422] border-2 border-white/15 text-white font-black text-sm outline-none">
+        <option value="overall">{t('lbOverall')}</option>
+        {CITIES.map(c=><option key={c.id} value={c.id}>{c.id}. {c.name}</option>)}
+      </select>
+    )}
+    {!SUPA_ON ? (<div className="text-xs text-amber-300/90 font-semibold mb-2">{t('lbOffline')}</div>)
+     : rows===undefined ? (<div className="text-sm text-white/60 font-semibold mb-2">{t('lbLoading')}</div>)
+     : (!list||!list.length) ? (<div className="text-sm text-white/60 font-semibold mb-2">{t('lbEmpty')}</div>)
+     : (<div className="space-y-1 mb-3">
+        {list.map((p,i)=>{ const mine=p.name===me;
+          return (<div key={i} className="flex items-center justify-between rounded-lg px-3 py-1.5 border"
+            style={{background:mine?'rgba(255,216,74,.12)':'rgba(0,0,0,.3)', borderColor:mine?'#ffd84a':'rgba(255,255,255,.1)'}}>
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="font-black w-5 text-center" style={{color:i===0?'#ffd84a':i<3?'#cfd6e0':'#7a8494'}}>{i+1}</span>
+              <span className="font-black truncate" style={{color:mine?'#ffd84a':'#fff'}}>{p.name}</span>
+              {p.boss && <span title="BESS BOSS">👑</span>}
+            </div>
+            <div className="text-right shrink-0"><span className="font-black" style={{color:'#b6ff7a'}}>€{fmt(p.score)}</span>{p.sub && <span className="text-[10px] text-white/45"> · {p.sub}</span>}</div>
+          </div>); })}
+      </div>)}
+    <div className="text-[11px] uppercase tracking-wide text-white/45 font-black mb-1 mt-2">{t('yourBests')} — {me||'—'}</div>
+    {bestEntries.length? (<div className="space-y-1">
+      {bestEntries.map(e=>{ const c=CITIES.find(x=>x.id===e.city); return (<div key={e.city} className="flex items-center justify-between bg-black/20 rounded-lg px-3 py-1 border border-white/10">
+        <span className="text-sm font-bold text-white/80">{c?c.name:('#'+e.city)}</span><span className="font-black" style={{color:'#b6ff7a'}}>€{fmt(e.score)}</span></div>); })}
+      <div className="flex items-center justify-between px-3 py-1"><span className="text-sm font-black text-white/60">{t('totalScore')}</span><span className="font-black text-amber-300">€{fmt(total)}</span></div>
+    </div>) : (<div className="text-sm text-white/50 font-semibold">{t('noBests')}</div>)}
+  </Modal>);
+}
+function Rules(){
+  return LANG==='es' ? (
     <ul className="text-[13px] text-white/85 space-y-2 mb-2 font-medium">
       <li>🎯 Alcanza el <b>objetivo de ingresos</b> diario sin dejar nunca a oscuras los edificios.</li>
       <li>💶 El excedente de solar y viento se vende a la red automáticamente. El precio sube y baja todo el día: barato de noche y al mediodía, caro al atardecer.</li>
@@ -664,7 +873,7 @@ function Tutorial({onStart}){
       <li>☁️ Las <b>nubes</b> reducen la solar y las 🦅 <b>aves</b> entran en algunos parques eólicos: <b>PARA las turbinas</b> hasta que pasen, o paga una multa.</li>
       <li>🏙 Si la batería se vacía durante un déficit, las luces parpadean: recarga en 2 segundos o es fin de partida.</li>
     </ul>
-    ) : (
+  ) : (
     <ul className="text-[13px] text-white/85 space-y-2 mb-2 font-medium">
       <li>🎯 Hit the daily <b>revenue target</b> without ever letting the buildings go dark.</li>
       <li>💶 Surplus solar &amp; wind sell to the grid automatically. The price swings all day — cheap at night &amp; midday, pricey in the evening.</li>
@@ -673,17 +882,46 @@ function Tutorial({onStart}){
       <li>☁️ <b>Clouds</b> cut solar output and 🦅 <b>birds</b> fly into some wind parks — <b>STOP the turbines</b> until they pass, or pay a strike fine.</li>
       <li>🏙 If the battery empties during a shortfall the lights flicker — recharge within 2 seconds or it's game over.</li>
     </ul>
-    )}
+  );
+}
+function Help({onClose}){
+  return (<Modal accent="#56e0ff">
+    <div className="flex items-center justify-between mb-2">
+      <div className="text-xl font-black" style={{color:'#ffd84a'}}>❔ {t('howToPlay')}</div>
+      <button onClick={onClose} className="text-sm font-black text-white/70 border border-white/15 rounded-lg px-3 py-1">{t('close')}</button>
+    </div>
+    <Rules/>
+    <Btn onClick={onClose} color="#56e0ff">{t('close')}</Btn>
+  </Modal>);
+}
+function Tutorial({onStart}){
+  return (<Modal>
+    <div className="flex items-center gap-2 mb-1">
+      <img src={ATA_LOGO} alt="ATA Insights" className="h-9 bg-white rounded-md p-1 shadow"/>
+      <div className="text-2xl font-black" style={{color:'#ffd84a'}}>⚡ GRID S/HERO</div>
+    </div>
+    <div className="text-sm text-white/80 mb-3 font-semibold">{t('tutSub')}</div>
+    <Rules/>
     <Btn onClick={onStart} color="#7CFC9B">{t('chooseCity')}</Btn>
   </Modal>);
 }
-function CitySelect({unlocked,onPick,setLang}){
+function CitySelect({unlocked,onPick,setLang,save,onBoard,onHelp}){
   return (<Modal accent="#56e0ff">
     <div className="flex items-center justify-between mb-1">
       <div className="text-xl font-black" style={{color:'#56e0ff'}}>{t('pickGrid')}</div>
       <div className="flex gap-1">
         <button onClick={()=>setLang('en')} className="text-[11px] font-black px-2 py-1 rounded-md border" style={{borderColor:LANG==='en'?'#ffd84a':'#39414f',color:LANG==='en'?'#ffd84a':'#8a93a3'}}>EN</button>
         <button onClick={()=>setLang('es')} className="text-[11px] font-black px-2 py-1 rounded-md border" style={{borderColor:LANG==='es'?'#ffd84a':'#39414f',color:LANG==='es'?'#ffd84a':'#8a93a3'}}>ES</button>
+      </div>
+    </div>
+    <div className="flex items-center justify-between gap-2 mb-2">
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="text-xs font-black text-white/70 truncate">👤 {(save&&save.name)?save.name:'—'}</span>
+        <BadgeRow badges={(save&&save.badges)||[]}/>
+      </div>
+      <div className="flex gap-1 shrink-0">
+        <button onClick={onHelp} className="text-[11px] font-black px-2 py-1 rounded-md border" style={{borderColor:'#56e0ff',color:'#56e0ff'}}>{t('helpBtn')}</button>
+        <button onClick={onBoard} className="text-[11px] font-black px-2 py-1 rounded-md border" style={{borderColor:'#ffd84a',color:'#ffd84a'}}>{t('leaderboard')}</button>
       </div>
     </div>
     <div className="text-xs text-white/60 mb-3 font-semibold">{t('pickGridSub')}</div>
@@ -724,9 +962,15 @@ function Row({k,v,c}){
   return (<div className="flex items-center justify-between bg-black/30 rounded-lg px-3 py-2 border border-white/10">
     <span className="text-[13px] text-white/75 font-semibold">{k}</span><span className="font-black" style={{color:c||'#fff'}}>{v}</span></div>);
 }
-function Results({r,onNext,onRetry,onMap,hasNext}){
+function Results({r,save,onNext,onRetry,onMap,hasNext}){
   const won=r.won, c=r.city;
   return (<Modal accent={won?'#7CFC9B':'#ff7a7a'}>
+    {won && (<div className="rounded-xl p-3 mb-3 text-center border-2 popIn" style={{borderColor:'#ffd84a',background:'linear-gradient(135deg,#2a2150,#3a2a10)'}}>
+      {BOSS_ART ? <img src={BOSS_ART} alt="BESS BOSS" className="max-h-24 mx-auto mb-1"/> : <div className="text-4xl mb-1 bob">⚡👑⚡</div>}
+      <div className="text-lg font-black tracking-wide" style={{color:'#ffd84a'}}>{t('bossYou')}</div>
+      <div className="text-xs text-white/70 font-bold mb-2">{t('bossCleared',c.name)}</div>
+      <div className="flex justify-center"><BadgeRow badges={(save&&save.badges)||[]}/></div>
+    </div>)}
     <div className="text-3xl font-black mb-1" style={{color:won?'#7CFC9B':'#ff7a7a'}}>{won?t('rCleared'):t('rMissed')}</div>
     <div className="text-sm text-white/70 mb-3 font-semibold">{won?t('rWonSub',c.name):t('rLostSub')}</div>
     <div className="space-y-2 mb-2">
