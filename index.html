@@ -69,6 +69,8 @@ const STR={
   welcomeBack:(n)=>`Welcome back, ${n}!`, continueBtn:"▶ CONTINUE", startFresh:"Not you? Start fresh",
   leaderboard:"🏆 Leaderboard", lbOverall:"🌍 Overall", lbCities:"cities", lbEmpty:"No scores yet — be the first BESS BOSS!", lbOffline:"The online leaderboard is being switched on. Your personal bests:", lbLoading:"Loading…",
   yourBests:"Your best scores", noBests:"No scores yet — clear a city!", totalScore:"Total", close:"Close", howToPlay:"How to play", helpBtn:"❔ How to play",
+  evtSurge:"⚡ PRICE SPIKE — SELL the battery NOW!", evtDemand:"🔥 DEMAND SURGE — cover the load!", evtCloud:"⛈️ STORM CLOUD — solar crashing!",
+  medBronze:"BRONZE", medSilver:"SILVER", medGold:"GOLD", medalGot:(m)=>`${m} medal!`, medalNext:"Next medal",
   bossYou:"YOU ARE THE BESS BOSS!", bossCleared:(c)=>`${c} cleared`,
  },
  es:{
@@ -97,6 +99,8 @@ const STR={
   welcomeBack:(n)=>`¡Hola de nuevo, ${n}!`, continueBtn:"▶ CONTINUAR", startFresh:"¿No eres tú? Empezar de cero",
   leaderboard:"🏆 Clasificación", lbOverall:"🌍 General", lbCities:"ciudades", lbEmpty:"Aún no hay puntuaciones, ¡sé el primer BESS BOSS!", lbOffline:"La clasificación online se está activando. Tus mejores marcas:", lbLoading:"Cargando…",
   yourBests:"Tus mejores marcas", noBests:"Aún no hay marcas, ¡supera una ciudad!", totalScore:"Total", close:"Cerrar", howToPlay:"Cómo jugar", helpBtn:"❔ Cómo jugar",
+  evtSurge:"⚡ ¡PICO DE PRECIO — VENDE la batería YA!", evtDemand:"🔥 ¡SUBIDA DE DEMANDA — cubre la carga!", evtCloud:"⛈️ ¡TORMENTA — la solar se hunde!",
+  medBronze:"BRONCE", medSilver:"PLATA", medGold:"ORO", medalGot:(m)=>`¡Medalla de ${m}!`, medalNext:"Siguiente medalla",
   bossYou:"¡ERES EL BESS BOSS!", bossCleared:(c)=>`${c} superada`,
  },
 };
@@ -160,7 +164,7 @@ function priceAt(hour,night,dip,eve){
 
 /* ============================ city profiles ========================= */
 const CITIES=[
-  { id:1, name:'Sevilla', region:'Andalusia, Spain · Europe', accent:'#ffce3a', factor:0.48,
+  { id:1, name:'Sevilla', region:'Andalusia, Spain · Europe', accent:'#ffce3a', factor:0.56,
     solarCap:1830, windMax:730, batCap:3000, batRate:700, demBase:60, demPeak:150, shape:'evening',
     night:42, dip:28, eve:120, cloudFreq:0.20, cloudDark:0.5, windGust:1.0, birdFreq:0, dayLen:165,
     sunrise:6, sunset:20, hue:'#7ed957',
@@ -169,7 +173,7 @@ const CITIES=[
     region_es:'Andalucía, España · Europa',
     lesson_es:'Sol a raudales. Deja que el excedente del mediodía se venda solo, guarda algo en la batería y cobra en el pico de precios de la tarde.',
     special_es:'Una red sencilla para empezar: sin aves, pocas nubes.' },
-  { id:2, name:'Buenos Aires', region:'Argentina · South America', accent:'#5fc9ff', factor:0.52,
+  { id:2, name:'Buenos Aires', region:'Argentina · South America', accent:'#5fc9ff', factor:0.57,
     solarCap:1700, windMax:1480, batCap:1700, batRate:450, demBase:70, demPeak:170, shape:'evening',
     night:40, dip:30, eve:125, cloudFreq:0.35, cloudDark:0.6, windGust:1.2, birdFreq:0.2, dayLen:162,
     sunrise:6.5, sunset:19.5, hue:'#7fb5d6',
@@ -259,6 +263,10 @@ CITIES.forEach(c=>c.target=estimateTarget(c));
 const DEG=8; // €/MWh battery degradation penalty
 const STRIKE_FINE=140; // € per bird-strike incident
 
+// medals: Bronze = hit target, Silver = 1.25×, Gold = 1.5×
+function medalFor(city,score){ if(!score)return 0; if(score>=city.target*1.5)return 3; if(score>=city.target*1.25)return 2; if(score>=city.target)return 1; return 0; }
+const MEDAL=['','🥉','🥈','🥇'];
+
 function initGame(c){
   return {
     hour:0, soc:c.batCap*0.35, money:0, degCost:0, strikeCost:0,
@@ -270,6 +278,8 @@ function initGame(c){
     // bird event
     birdState:'none', birdTimer:0, birdSpawn: c.birdFreq>0 ? (10+rand()*6) : 1e9,
     birdX:-12, struck:false, strikes:0,
+    // dynamic events (price surge / demand spike / storm cloud)
+    evtState:'none', evtType:'surge', evtTimer:0, evtSpawn:14+rand()*10, evtMag:1,
     // display
     solar:0, wind:0, demand:demandOut(0,c.demBase,c.demPeak,c.shape), price:c.night,
     gen:0, exportKw:0, toBat:0, fromBat:0, toBldg:0, status:'green', revRate:0, flicker:false, peakMoney:0,
@@ -351,12 +361,31 @@ function App(){
           }
         }
 
-        const solar=solarOut(ng.hour,1-ng.cloudCover*0.7,c.solarCap,c.sunrise,c.sunset);
+        // dynamic events — price surge (opportunity) vs demand spike / storm cloud (hazard), harsher in later cities
+        if(prev.evtState==='none'){
+          ng.evtSpawn=prev.evtSpawn-0.1;
+          if(ng.evtSpawn<=0 && ng.hour>1.0){
+            const harsh=Math.min(0.62, 0.12+c.id*0.05);
+            const type = rand()<harsh ? (rand()<0.5?'demand':'cloud') : 'surge';
+            ng.evtType=type; ng.evtState='active';
+            ng.evtTimer = type==='surge'?(9+rand()*8):(6+rand()*6);
+            ng.evtMag = type==='surge'?(1.9+rand()*1.0) : type==='demand'?(1.35+rand()*0.35) : (0.25+rand()*0.15);
+          }
+        } else {
+          ng.evtTimer=prev.evtTimer-0.1;
+          if(ng.evtTimer<=0){ ng.evtState='none'; const gap=Math.max(10,28-c.id*2); ng.evtSpawn=gap+rand()*gap*0.6; }
+        }
+        const evActive=ng.evtState==='active';
+        const evPriceMul=(evActive&&ng.evtType==='surge')?ng.evtMag:1;
+        const evDemMul=(evActive&&ng.evtType==='demand')?ng.evtMag:1;
+        const evSolMul=(evActive&&ng.evtType==='cloud')?ng.evtMag:1;
+
+        const solar=solarOut(ng.hour,1-ng.cloudCover*0.7,c.solarCap,c.sunrise,c.sunset)*evSolMul;
         const wind=prev.turbines?ng.windCurrent:0;
         const gen=solar+wind;
-        const demand=demandOut(ng.hour,c.demBase,c.demPeak,c.shape);
+        const demand=demandOut(ng.hour,c.demBase,c.demPeak,c.shape)*evDemMul;
         ng.priceNoise=prev.priceNoise*0.9+(rand()-0.5)*4;
-        const price=Math.max(6,priceAt(ng.hour,c.night,c.dip,c.eve)+ng.priceNoise);
+        const price=Math.max(6,(priceAt(ng.hour,c.night,c.dip,c.eve)+ng.priceNoise)*evPriceMul);
 
         // battery dispatch — keeping the lights on is AUTOMATIC; SELL just adds grid export
         const deficit=Math.max(0,demand-gen);
@@ -436,7 +465,10 @@ function App(){
 
 /* =============================== Header ============================= */
 function Header({city,g,onHelp}){
-  const pct=clamp(g.money/city.target,0,1);
+  const goldT=city.target*1.5;
+  const pct=clamp(g.money/goldT,0,1);
+  const med=medalFor(city,g.money);
+  const barCol=med===0?'#3bd16f':med===1?'#cd7f32':med===2?'#cfd6e0':'#ffd84a';
   const dayPct=clamp(g.hour/24,0,1);
   return (
     <div className="shrink-0">
@@ -457,8 +489,13 @@ function Header({city,g,onHelp}){
           </div>
         </div>
       </div>
-      <div className="mt-1 h-2.5 rounded-full bg-black/40 overflow-hidden border border-white/10">
-        <div className="h-full rounded-full transition-all duration-200" style={{width:`${pct*100}%`,background:'linear-gradient(90deg,#3bd16f,#a6ff5e)'}}/>
+      <div className="mt-1 relative h-3">
+        <div className="absolute inset-0 rounded-full bg-black/40 overflow-hidden border border-white/10">
+          <div className="h-full rounded-full transition-all duration-200" style={{width:`${pct*100}%`,background:`linear-gradient(90deg,${barCol}aa,${barCol})`}}/>
+        </div>
+        {[[0.667,'🥉'],[0.833,'🥈'],[1,'🥇']].map(([p,e],i)=>(
+          <div key={i} className="absolute top-0 h-3 flex items-center justify-center" style={{left:`calc(${p*100}% - 7px)`,width:'14px'}}>
+            <span className="text-[10px] leading-none" style={{filter:'drop-shadow(0 1px 1px rgba(0,0,0,.7))'}}>{e}</span></div>))}
       </div>
       <div className="mt-0.5 h-1 rounded-full bg-black/30 overflow-hidden">
         <div className="h-full bg-amber-300/80" style={{width:`${dayPct*100}%`}}/>
@@ -648,15 +685,18 @@ function World({g,city,floaters}){
         })}
       </svg>
 
-      {/* alerts */}
-      {danger && (<div className="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs sm:text-sm font-black alertP"
-          style={{background:'#e02424',boxShadow:'0 4px 14px rgba(0,0,0,.5)'}}>{t('aBirdsOver')}</div>)}
-      {!danger && g.birdState==='incoming' && (<div className="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs sm:text-sm font-black"
-          style={{background:'#f59e0b'}}>{t('aFlock')}</div>)}
-      {g.status!=='green' && !danger && g.birdState!=='incoming' && (
-        <div className="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs sm:text-sm font-black popIn"
-          style={{background:g.status==='red'?'#e02424':'#f59e0b',boxShadow:'0 4px 12px rgba(0,0,0,.4)'}}>
-          {g.status==='red'?t('aEmpty'):t('aTight')}</div>)}
+      {/* alerts (stacked top-center) */}
+      <div className="absolute top-2 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 w-max max-w-[96%]">
+        {g.evtState==='active' && (<div className="px-3 py-1 rounded-full text-xs sm:text-sm font-black alertP text-center"
+            style={{background:g.evtType==='surge'?'#16a34a':g.evtType==='demand'?'#e0571a':'#3b4a6b',boxShadow:'0 4px 14px rgba(0,0,0,.5)'}}>
+            {g.evtType==='surge'?t('evtSurge'):g.evtType==='demand'?t('evtDemand'):t('evtCloud')}</div>)}
+        {danger && (<div className="px-3 py-1 rounded-full text-xs sm:text-sm font-black alertP text-center"
+            style={{background:'#e02424',boxShadow:'0 4px 14px rgba(0,0,0,.5)'}}>{t('aBirdsOver')}</div>)}
+        {!danger && g.birdState==='incoming' && (<div className="px-3 py-1 rounded-full text-xs sm:text-sm font-black text-center"
+            style={{background:'#f59e0b'}}>{t('aFlock')}</div>)}
+        {g.status!=='green' && !danger && g.birdState!=='incoming' && (<div className="px-3 py-1 rounded-full text-xs sm:text-sm font-black popIn text-center"
+            style={{background:g.status==='red'?'#e02424':'#f59e0b',boxShadow:'0 4px 12px rgba(0,0,0,.4)'}}>{g.status==='red'?t('aEmpty'):t('aTight')}</div>)}
+      </div>
 
       {floaters.map(f=>(<div key={f.id} className="floater text-base sm:text-2xl" style={{left:`${f.x}%`,top:'45%',color:f.neg?'#ff8a8a':'#b6ff7a'}}>{f.neg?'−':'+'}€{Math.abs(f.amt).toFixed(0)}</div>))}
     </div>
@@ -802,11 +842,12 @@ function Welcome({name,onContinue,onFresh}){
     <button onClick={onFresh} className="w-full mt-2 py-2 rounded-xl font-bold text-sm text-white/60 border border-white/15">{t('startFresh')}</button>
   </Modal>);
 }
-function BadgeRow({badges}){
+function BadgeRow({save}){
+  const best=(save&&save.best)||{};
   return (<div className="flex gap-1 flex-wrap">
-    {CITIES.map(c=>{ const got=(badges||[]).includes(c.id);
-      return (<div key={c.id} title={c.name} className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black border-2"
-        style={{borderColor:got?c.accent:'#39414f',background:got?c.accent:'#161b27',color:got?'#0c1220':'#4b5566'}}>{got?'★':c.id}</div>);
+    {CITIES.map(c=>{ const m=medalFor(c,best[c.id]); const got=m>0;
+      return (<div key={c.id} title={c.name+(got?(' — '+MEDAL[m]):'')} className="w-7 h-7 rounded-full flex items-center justify-center text-[13px] font-black border-2"
+        style={{borderColor:got?c.accent:'#39414f',background:'#161b27',color:got?'#fff':'#4b5566'}}>{got?MEDAL[m]:c.id}</div>);
     })}
   </div>);
 }
@@ -917,7 +958,7 @@ function CitySelect({unlocked,onPick,setLang,save,onBoard,onHelp}){
     <div className="flex items-center justify-between gap-2 mb-2">
       <div className="flex items-center gap-2 min-w-0">
         <span className="text-xs font-black text-white/70 truncate">👤 {(save&&save.name)?save.name:'—'}</span>
-        <BadgeRow badges={(save&&save.badges)||[]}/>
+        <BadgeRow save={save}/>
       </div>
       <div className="flex gap-1 shrink-0">
         <button onClick={onHelp} className="text-[11px] font-black px-2 py-1 rounded-md border" style={{borderColor:'#56e0ff',color:'#56e0ff'}}>{t('helpBtn')}</button>
@@ -964,12 +1005,16 @@ function Row({k,v,c}){
 }
 function Results({r,save,onNext,onRetry,onMap,hasNext}){
   const won=r.won, c=r.city;
+  const medal=won?medalFor(c,Math.round(r.money)):0;
+  const medalName=medal===3?t('medGold'):medal===2?t('medSilver'):t('medBronze');
+  const medalCol=medal===3?'#ffd84a':medal===2?'#cfd6e0':'#cd7f32';
   return (<Modal accent={won?'#7CFC9B':'#ff7a7a'}>
-    {won && (<div className="rounded-xl p-3 mb-3 text-center border-2 popIn" style={{borderColor:'#ffd84a',background:'linear-gradient(135deg,#2a2150,#3a2a10)'}}>
-      {BOSS_ART ? <img src={BOSS_ART} alt="BESS BOSS" className="max-h-24 mx-auto mb-1"/> : <div className="text-4xl mb-1 bob">⚡👑⚡</div>}
+    {won && (<div className="rounded-xl p-3 mb-3 text-center border-2 popIn" style={{borderColor:medalCol,background:'linear-gradient(135deg,#2a2150,#3a2a10)'}}>
+      {BOSS_ART ? <img src={BOSS_ART} alt="BESS BOSS" className="max-h-20 mx-auto mb-1"/> : <div className="text-3xl mb-1 bob">⚡👑⚡</div>}
       <div className="text-lg font-black tracking-wide" style={{color:'#ffd84a'}}>{t('bossYou')}</div>
-      <div className="text-xs text-white/70 font-bold mb-2">{t('bossCleared',c.name)}</div>
-      <div className="flex justify-center"><BadgeRow badges={(save&&save.badges)||[]}/></div>
+      <div className="text-xs text-white/70 font-bold">{t('bossCleared',c.name)}</div>
+      <div className="text-2xl mt-1 font-black" style={{color:medalCol}}>{MEDAL[medal]} {t('medalGot',medalName)}</div>
+      <div className="flex justify-center mt-1"><BadgeRow save={save}/></div>
     </div>)}
     <div className="text-3xl font-black mb-1" style={{color:won?'#7CFC9B':'#ff7a7a'}}>{won?t('rCleared'):t('rMissed')}</div>
     <div className="text-sm text-white/70 mb-3 font-semibold">{won?t('rWonSub',c.name):t('rLostSub')}</div>
